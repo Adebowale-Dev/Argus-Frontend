@@ -5,6 +5,7 @@ import {
   IconBook,
   IconChartBar,
   IconDashboard,
+  IconFileSettings,
   IconFileDescription,
   IconHelp,
   IconInnerShadowTop,
@@ -32,44 +33,51 @@ import type { AuthUser, Role } from "@/lib/api/types"
 const mainNavigation = {
   SUPER_ADMIN: [
     { title: "Dashboard", url: "/admin/dashboard", icon: IconDashboard },
-    { title: "Accounts", url: "/admin/users/new", icon: IconUsers },
-    { title: "Reports", url: "/admin/dashboard", icon: IconChartBar },
-    { title: "Anti-cheat", url: "/admin/dashboard", icon: IconShieldCheck },
-  ],
-  SUB_ADMIN: [
-    { title: "Dashboard", url: "/admin/dashboard", icon: IconDashboard },
-    { title: "Accounts", url: "/admin/users/new", icon: IconUsers },
-    { title: "Reports", url: "/admin/dashboard", icon: IconChartBar },
+    { title: "Accounts", url: "/admin/users", icon: IconUsers },
+    { title: "Question oversight", url: "/admin/questions", icon: IconBook },
+    { title: "Examinations", url: "/admin/exams", icon: IconShieldCheck },
+    { title: "Reports and integrity", url: "/admin/reports", icon: IconReportAnalytics },
+    { title: "Governance", url: "/admin/governance", icon: IconFileSettings },
   ],
   EXAMINER: [
     { title: "Dashboard", url: "/examiner/dashboard", icon: IconDashboard },
-    { title: "Question bank", url: "/examiner/dashboard", icon: IconBook },
-    { title: "Monitoring", url: "/examiner/dashboard", icon: IconShieldCheck },
+    { title: "Question bank", url: "/examiner/questions", icon: IconBook },
+    { title: "Examinations", url: "/examiner/exams", icon: IconShieldCheck },
   ],
   CANDIDATE: [
-    { title: "My exams", url: "/candidate/dashboard", icon: IconDashboard },
-    { title: "Instructions", url: "/candidate/dashboard", icon: IconBook },
+    { title: "Dashboard", url: "/candidate/dashboard", icon: IconDashboard },
+    { title: "My exams", url: "/candidate/exams", icon: IconBook },
   ],
-} satisfies Record<Role, { title: string; url: string; icon: typeof IconDashboard }[]>
+} satisfies Partial<Record<Role, { title: string; url: string; icon: typeof IconDashboard }[]>>
 
 const documents = {
   SUPER_ADMIN: [
-    { name: "Exam Reports", url: "/admin/dashboard", icon: IconReportAnalytics },
+    { name: "Exam Reports", url: "/admin/reports", icon: IconReportAnalytics },
     { name: "User Provisioning", url: "/admin/users/new", icon: IconFileDescription },
   ],
   SUB_ADMIN: [
-    { name: "Exam Reports", url: "/admin/dashboard", icon: IconReportAnalytics },
+    { name: "Exam Reports", url: "/admin/reports", icon: IconReportAnalytics },
   ],
   EXAMINER: [
-    { name: "Assessment Reports", url: "/examiner/dashboard", icon: IconReportAnalytics },
+    { name: "Assessment Reports", url: "/examiner/exams", icon: IconReportAnalytics },
   ],
   CANDIDATE: [
-    { name: "Exam Schedule", url: "/candidate/dashboard", icon: IconFileDescription },
+    { name: "Exam Schedule", url: "/candidate/exams", icon: IconFileDescription },
   ],
 } satisfies Record<Role, { name: string; url: string; icon: typeof IconDashboard }[]>
 
 export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: AuthUser }) {
   const admin = user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN"
+  const subAdminNavigation = [
+    { title: "Dashboard", url: "/admin/dashboard", icon: IconDashboard },
+    { title: "Examinations", url: "/admin/exams", icon: IconShieldCheck },
+    ...(user.permissions.some((permission) => ["MANAGE_USERS", "MANAGE_EXAMINERS", "MANAGE_CANDIDATES"].includes(permission)) ? [{ title: "Accounts", url: "/admin/users", icon: IconUsers }] : []),
+    ...(user.permissions.includes("VIEW_REPORTS") ? [{ title: "Question oversight", url: "/admin/questions", icon: IconBook }] : []),
+    ...(user.permissions.some((permission) => ["VIEW_REPORTS", "VIEW_ALL_REPORTS", "VIEW_ANTI_CHEAT_REPORTS"].includes(permission)) ? [{ title: "Reports and integrity", url: "/admin/reports", icon: IconReportAnalytics }] : []),
+    ...(user.permissions.some((permission) => ["VIEW_AUDIT_LOGS", "MANAGE_SETTINGS", "MANAGE_PLATFORM_SETTINGS"].includes(permission)) ? [{ title: "Governance", url: "/admin/governance", icon: IconChartBar }] : []),
+  ]
+  const navigation = user.role === "SUB_ADMIN" ? subAdminNavigation : (mainNavigation[user.role] ?? [])
+  const userDocuments = user.role === "SUB_ADMIN" && !user.permissions.includes("VIEW_REPORTS") ? [] : documents[user.role]
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -86,8 +94,8 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={mainNavigation[user.role]} createHref={admin ? "/admin/users/new" : undefined} />
-        <NavDocuments items={documents[user.role]} />
+        <NavMain items={navigation} createHref={admin && (user.role === "SUPER_ADMIN" || user.permissions.some((permission) => ["MANAGE_EXAMINERS", "MANAGE_CANDIDATES"].includes(permission))) ? "/admin/users/new" : undefined} />
+        <NavDocuments items={userDocuments} />
         <NavSecondary
           items={[
             { title: "Get help", url: homeForRole(user.role), icon: IconHelp },

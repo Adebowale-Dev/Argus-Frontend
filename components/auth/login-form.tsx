@@ -38,7 +38,7 @@ export function LoginForm({
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     loginMutation.mutate({
-      email: String(data.get("email")),
+      identifier: String(data.get("identifier")),
       password: String(data.get("password")),
     })
   }
@@ -54,8 +54,8 @@ export function LoginForm({
           <form onSubmit={submit}>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input id="email" name="email" type="email" placeholder="m@example.com" autoComplete="email" required />
+                <FieldLabel htmlFor="identifier">Email or username</FieldLabel>
+                <Input id="identifier" name="identifier" placeholder="admin@gmail.com or adaeze.okafor" autoComplete="username" required />
               </Field>
               <Field>
                 <div className="flex items-center">
@@ -71,7 +71,7 @@ export function LoginForm({
                   {loginMutation.isPending ? "Signing in..." : "Login"}
                 </Button>
                 <FieldDescription className="text-center">
-                  Accounts are created by authorized administrators.
+                  New examiner? <Link href="/register/examiner" className="underline underline-offset-4">Create an account</Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>

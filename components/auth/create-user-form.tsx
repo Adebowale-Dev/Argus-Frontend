@@ -17,11 +17,16 @@ const permissions = [
   "MANAGE_USERS",
   "MANAGE_EXAMINERS",
   "MANAGE_CANDIDATES",
-  "MANAGE_DEPARTMENTS",
-  "MANAGE_COURSES",
+  "VIEW_DASHBOARD",
+  "VIEW_USERS",
+  "VIEW_ALL_EXAMS",
+  "VIEW_ALL_ATTEMPTS",
+  "VIEW_ALL_REPORTS",
+  "VIEW_ANTI_CHEAT_REPORTS",
   "VIEW_REPORTS",
   "VIEW_AUDIT_LOGS",
-  "MANAGE_SETTINGS",
+  "MANAGE_PLATFORM_SETTINGS",
+  "DISABLE_EXAMS",
   "BLOCK_USERS",
   "RESET_USER_PASSWORDS",
 ] as const
@@ -92,7 +97,7 @@ export function CreateUserForm() {
               </div>
               <Field>
                 <FieldLabel htmlFor="invite-email">Email address</FieldLabel>
-                <Input id="invite-email" name="email" type="email" required placeholder="name@institution.edu" />
+                  <Input id="invite-email" name="email" type="email" required placeholder="name@organization.com" />
               </Field>
               <Field>
                 <FieldLabel htmlFor="role">Account role</FieldLabel>
@@ -148,8 +153,8 @@ export function CreateUserForm() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-muted-foreground">
           <p>Sub-admins cannot create other administrators or grant themselves permissions.</p>
-          <p>Examiners receive exam-authoring access only for assigned courses.</p>
-          <p>Candidates can access only assigned published examinations.</p>
+          <p>Examiners own their question banks and publish exams through secure public links and 6-digit codes.</p>
+          <p>Public exam takers do not need admin-created accounts unless a login-required exam mode is enabled later.</p>
         </CardContent>
       </Card>
     </div>

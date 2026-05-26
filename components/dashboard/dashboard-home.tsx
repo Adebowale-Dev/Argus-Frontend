@@ -2,43 +2,59 @@
 
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { IconCalendarTime, IconShieldCheck, IconUserPlus } from "@tabler/icons-react"
+import { IconCalendarTime, IconChartBar, IconShieldCheck, IconUserPlus } from "@tabler/icons-react"
 
 import { SectionCards, type DashboardCard } from "@/components/section-cards"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { apiRequest, currentUser } from "@/lib/api/client"
+import { apiRequest } from "@/lib/api/client"
+import type { AdminDashboard, CandidateDashboard, ExaminerDashboard } from "@/lib/api/types"
 
-type DashboardStats = { activeUsers: number; exams: number; attempts: number; antiCheatEvents: number }
-type Exam = { _id?: string; id?: string; title: string; startTime: string; status: string; durationMinutes: number }
+const formatDate = (value?: string) => (value ? new Date(value).toLocaleString() : "Schedule not set")
 
 export function DashboardHome({ space }: { space: "admin" | "examiner" | "candidate" }) {
-  const { data: user } = useQuery({ queryKey: ["auth", "me"], queryFn: currentUser })
-  const reportsAllowed = space !== "candidate" && (user?.role !== "SUB_ADMIN" || user.permissions.includes("VIEW_REPORTS"))
-  const stats = useQuery({
-    queryKey: ["dashboard", space],
-    queryFn: () => apiRequest<DashboardStats>("/reports/dashboard").then((response) => response.data),
-    enabled: Boolean(user && reportsAllowed),
+  const adminDashboard = useQuery({
+    queryKey: ["dashboard", "admin"],
+    queryFn: () => apiRequest<AdminDashboard>("/dashboard/admin").then((response) => response.data),
+    enabled: space === "admin",
   })
-  const exams = useQuery({
-    queryKey: ["candidate", "exams"],
-    queryFn: () => apiRequest<Exam[]>("/candidate/exams?limit=4").then((response) => response.data),
-    enabled: space === "candidate" && Boolean(user),
+  const examinerDashboard = useQuery({
+    queryKey: ["dashboard", "examiner"],
+    queryFn: () => apiRequest<ExaminerDashboard>("/dashboard/examiner").then((response) => response.data),
+    enabled: space === "examiner",
+  })
+  const candidateDashboard = useQuery({
+    queryKey: ["dashboard", "candidate"],
+    queryFn: () => apiRequest<CandidateDashboard>("/dashboard/candidate").then((response) => response.data),
+    enabled: space === "candidate",
   })
 
-  const cards: DashboardCard[] = space === "candidate"
-    ? [
-        { label: "Assigned Exams", value: exams.data?.length ?? "-", change: "Available", headline: "Ready for your schedule", detail: "Published assessments assigned to you" },
-        { label: "Monitoring", value: "Active", change: "Enabled", headline: "Integrity rules enabled", detail: "Server-authoritative anti-cheat tracking" },
-        { label: "Session Security", value: "Secure", change: "Protected", headline: "Timed attempts protected", detail: "Your submissions are server controlled" },
-      ]
-    : [
-        { label: "Active Users", value: stats.data?.activeUsers ?? "-", change: "Live", headline: "Accounts in good standing", detail: "Current platform user coverage" },
-        { label: "Examinations", value: stats.data?.exams ?? "-", change: "Managed", headline: "Assessment pipeline active", detail: "Published and scheduled examinations" },
-        { label: "Attempts", value: stats.data?.attempts ?? "-", change: "Tracked", headline: "Candidate sessions monitored", detail: "Server-controlled exam attempts" },
-        { label: "Integrity Events", value: stats.data?.antiCheatEvents ?? "-", change: "Review", headline: "Anti-cheat signal visibility", detail: "Recorded monitoring activity", trend: "down" },
-      ]
+  const cards: DashboardCard[] =
+    space === "candidate"
+      ? [
+          { label: "Available To Take", value: candidateDashboard.data?.summary.availableCount ?? "-", change: "Ready", headline: "Assigned exams ready now", detail: "Exams you can begin from your dashboard" },
+          { label: "In Progress", value: candidateDashboard.data?.summary.inProgressCount ?? "-", change: "Live", headline: "Timed session protection", detail: "Server-controlled exam sessions" },
+          { label: "Completed", value: candidateDashboard.data?.summary.completedCount ?? "-", change: "Tracked", headline: "Past attempts available", detail: "Submitted exam history and results" },
+          { label: "Assigned", value: candidateDashboard.data?.summary.assignedCount ?? "-", change: "Scheduled", headline: "Upcoming exam queue", detail: "Published exams assigned to your account" },
+        ]
+      : space === "admin"
+        ? [
+            { label: "Active Users", value: adminDashboard.data?.summary.activeUsers ?? "-", change: "Live", headline: "Accounts in good standing", detail: "Current platform user coverage" },
+            { label: "Exams", value: adminDashboard.data?.summary.totalExams ?? "-", change: "Moderated", headline: "Platform-wide exam oversight", detail: "Draft, published, and closed exams" },
+            { label: "Attempts", value: adminDashboard.data?.summary.totalAttempts ?? "-", change: "Tracked", headline: "Candidate sessions monitored", detail: "All secure attempt sessions" },
+            { label: "Anti-Cheat Events", value: adminDashboard.data?.summary.antiCheatEvents ?? "-", change: "Review", headline: "Integrity signal visibility", detail: "Recorded monitoring activity", trend: "down" },
+          ]
+        : [
+            { label: "Question Banks", value: examinerDashboard.data?.summary.questionBanks ?? "-", change: "Owned", headline: "Your content libraries", detail: "Reusable question bank assets" },
+            { label: "Exams", value: examinerDashboard.data?.summary.totalExams ?? "-", change: "Built", headline: "Exams under your workspace", detail: "Draft and published assessments" },
+            { label: "Published", value: examinerDashboard.data?.summary.publishedExams ?? "-", change: "Live", headline: "Public or scheduled delivery", detail: "Exams ready for candidate access" },
+            { label: "Flagged Attempts", value: examinerDashboard.data?.summary.flaggedAttempts ?? "-", change: "Watch", headline: "Integrity attention needed", detail: "Candidate sessions with violations", trend: "down" },
+          ]
+
+  const adminItems = adminDashboard.data?.recentFlaggedAttempts ?? []
+  const examinerItems = examinerDashboard.data?.recentExams ?? []
+  const candidateItems = candidateDashboard.data?.assignedExams ?? []
 
   return (
     <div className="flex flex-1 flex-col">
@@ -48,26 +64,66 @@ export function DashboardHome({ space }: { space: "admin" | "examiner" | "candid
           <div className="grid gap-4 px-4 lg:grid-cols-[1.35fr_.85fr] lg:px-6">
             <Card>
               <CardHeader>
-                <CardTitle>{space === "candidate" ? "Upcoming examinations" : "Operational readiness"}</CardTitle>
+                <CardTitle>
+                  {space === "candidate"
+                    ? "Assigned examination queue"
+                    : space === "admin"
+                      ? "Recent flagged activity"
+                      : "Recent published work"}
+                </CardTitle>
                 <CardDescription>
-                  {space === "candidate" ? "Assigned exams appear here when published by your examiner." : "ARGUS monitoring and protected submission services are available."}
+                  {space === "candidate"
+                    ? "Exams assigned to your account appear here automatically when your examiner adds you."
+                    : space === "admin"
+                      ? "Platform-level sessions and exams that may need moderation attention."
+                      : "The latest exams in your workspace and their current access state."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {space === "candidate" && exams.data?.length ? exams.data.map((exam) => (
-                  <div key={exam.id ?? exam._id} className="flex items-center justify-between rounded-xl border bg-muted/25 p-4">
-                    <div>
-                      <p className="font-medium">{exam.title}</p>
-                      <p className="text-sm text-muted-foreground">{new Date(exam.startTime).toLocaleString()}</p>
-                    </div>
-                    <Badge variant="outline">{exam.status}</Badge>
-                  </div>
-                )) : (
-                  <div className="flex items-center gap-3 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                    <IconShieldCheck className="size-5" />
-                    {reportsAllowed || space === "candidate" ? "No urgent integrity alerts require action." : "Reporting access has not been assigned to your account."}
-                  </div>
-                )}
+                {space === "candidate" && candidateItems.length
+                  ? candidateItems.map((exam) => (
+                      <div key={exam.id} className="flex items-center justify-between rounded-xl border bg-muted/25 p-4">
+                        <div className="space-y-1">
+                          <p className="font-medium">{exam.title}</p>
+                          <p className="text-sm text-muted-foreground">{formatDate(exam.startTime)}</p>
+                          <p className="text-xs text-muted-foreground">{exam.code ?? "Code pending"} - {exam.durationMinutes} minutes</p>
+                        </div>
+                        <Badge variant="outline">{exam.status}</Badge>
+                      </div>
+                    ))
+                  : space === "admin" && adminItems.length
+                    ? adminItems.map((attempt) => (
+                        <div key={attempt.id} className="rounded-xl border bg-muted/25 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <p className="font-medium">{attempt.examTitle ?? "Unknown exam"}</p>
+                              <p className="text-sm text-muted-foreground">{attempt.candidateName}{attempt.candidateEmail ? ` - ${attempt.candidateEmail}` : ""}</p>
+                            </div>
+                            <Badge variant="outline">{attempt.status}</Badge>
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">Violation score: {attempt.violationScore} - Updated {formatDate(attempt.updatedAt)}</p>
+                        </div>
+                      ))
+                    : space === "examiner" && examinerItems.length
+                      ? examinerItems.map((exam) => (
+                          <div key={exam.id} className="flex items-center justify-between rounded-xl border bg-muted/25 p-4">
+                            <div className="space-y-1">
+                              <p className="font-medium">{exam.title}</p>
+                              <p className="text-sm text-muted-foreground">{exam.code ?? "Code pending"} - {formatDate(exam.createdAt)}</p>
+                            </div>
+                            <Badge variant="outline">{exam.status}</Badge>
+                          </div>
+                        ))
+                      : (
+                        <div className="flex items-center gap-3 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
+                          <IconChartBar className="size-5" />
+                          {space === "candidate"
+                            ? "No exams are assigned to your account yet."
+                            : space === "admin"
+                              ? "No urgent moderation-ready alerts require action."
+                              : "No recent exams are available in your workspace yet."}
+                        </div>
+                      )}
               </CardContent>
             </Card>
             <Card>
@@ -81,11 +137,18 @@ export function DashboardHome({ space }: { space: "admin" | "examiner" | "candid
                     <Link href="/admin/users/new"><IconUserPlus /> Provision an account</Link>
                   </Button>
                 )}
-                <Button variant="outline" className="justify-start">
-                  <IconCalendarTime /> Review scheduled exams
+                {space === "candidate" && candidateDashboard.data?.nextExam && (
+                  <Button asChild className="justify-start">
+                    <Link href={`/candidate/exams/${candidateDashboard.data.nextExam.id}`}><IconCalendarTime /> Start next available exam</Link>
+                  </Button>
+                )}
+                <Button asChild variant="outline" className="justify-start">
+                  <Link href={space === "admin" ? "/admin/exams" : space === "examiner" ? "/examiner/exams" : "/candidate/exams"}><IconCalendarTime /> Review scheduled exams</Link>
                 </Button>
-                <Button variant="outline" className="justify-start">
-                  <IconShieldCheck /> View integrity monitoring
+                <Button asChild variant="outline" className="justify-start">
+                  <Link href={space === "admin" ? "/admin/reports" : space === "examiner" ? "/examiner/exams" : candidateDashboard.data?.activeAttempt ? `/candidate/attempts/${candidateDashboard.data.activeAttempt.id}` : "/candidate/exams"}>
+                    <IconShieldCheck /> {space === "candidate" ? "Open secure attempt room" : "View integrity monitoring"}
+                  </Link>
                 </Button>
               </CardContent>
             </Card>

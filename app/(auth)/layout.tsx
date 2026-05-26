@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ShieldCheckIcon } from "lucide-react"
 
+import { PublicAuthGuard } from "@/components/auth/public-auth-guard"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -10,13 +11,13 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <ThemeToggle />
       </div>
       <div className="flex w-full max-w-sm flex-col gap-6">
-        <Link href="/login" className="flex items-center gap-2 self-center font-medium">
+        <Link href="/" className="flex items-center gap-2 self-center font-medium">
           <span className="flex size-6 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <ShieldCheckIcon className="size-4" />
           </span>
           ARGUS
         </Link>
-        {children}
+        <PublicAuthGuard>{children}</PublicAuthGuard>
       </div>
     </main>
   )
