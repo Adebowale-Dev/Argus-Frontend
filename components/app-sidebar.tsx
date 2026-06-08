@@ -8,7 +8,6 @@ import {
   IconFileSettings,
   IconFileDescription,
   IconHelp,
-  IconInnerShadowTop,
   IconReportAnalytics,
   IconShieldCheck,
   IconUsers,
@@ -27,6 +26,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { ArgusMark } from "@/components/brand/argus-mark"
 import { homeForRole } from "@/lib/auth/routing"
 import type { AuthUser, Role } from "@/lib/api/types"
 
@@ -86,8 +86,7 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
           <SidebarMenuItem>
             <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:p-1.5!">
               <Link href={homeForRole(user.role)}>
-                <IconInnerShadowTop className="size-5!" />
-                <span className="text-base font-semibold">ARGUS</span>
+                <ArgusMark compact className="gap-2" />
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

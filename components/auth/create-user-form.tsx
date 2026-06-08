@@ -38,12 +38,13 @@ function temporaryPassword() {
   return `Argus!${random.slice(0, 10)}`
 }
 
-export function CreateUserForm() {
+export function CreateUserForm({ workspace = "admin" }: { workspace?: "admin" | "examiner" }) {
   const { data: actor } = useQuery({ queryKey: ["auth", "me"], queryFn: currentUser })
   const [role, setRole] = useState<ManagedRole>("CANDIDATE")
   const [password, setPassword] = useState(() => temporaryPassword())
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
-  const canCreateSubAdmin = actor?.role === "SUPER_ADMIN"
+  const canCreateSubAdmin = actor?.role === "SUPER_ADMIN" && workspace === "admin"
+  const canCreateExaminer = workspace === "admin"
 
   const mutation = useMutation({
     mutationFn: (input: CreateUserInput) => apiRequest<AuthUser>("/users", {
@@ -79,7 +80,9 @@ export function CreateUserForm() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl"><UserPlusIcon className="size-5 text-primary" /> Provision an account</CardTitle>
           <CardDescription>
-            Create controlled access for sub-admins, examiners, or candidates. New users must change their temporary password.
+            {workspace === "examiner"
+              ? "Create and manage candidate accounts for your own exams. New candidates must change their temporary password."
+              : "Create controlled access for sub-admins, examiners, or candidates. New users must change their temporary password."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -108,10 +111,12 @@ export function CreateUserForm() {
                   className="h-9 rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <option value="CANDIDATE">Candidate</option>
-                  <option value="EXAMINER">Examiner</option>
+                  {canCreateExaminer && <option value="EXAMINER">Examiner</option>}
                   {canCreateSubAdmin && <option value="SUB_ADMIN">Sub-admin</option>}
                 </select>
-                {!canCreateSubAdmin && <FieldDescription>Only a super admin can provision sub-admin accounts.</FieldDescription>}
+                {workspace === "examiner"
+                  ? <FieldDescription>Examiner workspaces can only provision candidate accounts.</FieldDescription>
+                  : !canCreateSubAdmin ? <FieldDescription>Only a super admin can provision sub-admin accounts.</FieldDescription> : null}
               </Field>
               <Field>
                 <FieldLabel htmlFor="temporary-password">Temporary password</FieldLabel>
@@ -153,8 +158,8 @@ export function CreateUserForm() {
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-muted-foreground">
           <p>Sub-admins cannot create other administrators or grant themselves permissions.</p>
-          <p>Examiners own their question banks and publish exams through secure public links and 6-digit codes.</p>
-          <p>Public exam takers do not need admin-created accounts unless a login-required exam mode is enabled later.</p>
+          <p>Examiners own their question banks and publish exams through public access or verified email invite flows.</p>
+          <p>{workspace === "examiner" ? "Candidate accounts you create are scoped to your onboarding and exam operations." : "Admins retain full system-wide governance and reporting access."}</p>
         </CardContent>
       </Card>
     </div>

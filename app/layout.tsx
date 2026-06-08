@@ -4,7 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { AppProviders } from "@/components/providers/app-providers";
 
-const manrope = Manrope({subsets:['latin'],variable:'--font-sans'});
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,7 +18,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ARGUS | Secure Examination Platform",
-  description: "Online computer-based examination platform with anti-cheat monitoring.",
+  description:
+    "Online computer-based examination platform with anti-cheat monitoring.",
+  icons: {
+    icon: "/logo.svg",
+    shortcut: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({
@@ -30,7 +36,14 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", manrope.variable)}
+      className={cn(
+        "h-full",
+        "antialiased",
+        geistSans.variable,
+        geistMono.variable,
+        "font-sans",
+        manrope.variable,
+      )}
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col">
         <AppProviders>{children}</AppProviders>

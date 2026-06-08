@@ -3,15 +3,16 @@
 import { useEffect, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
+import { useSyncExternalStore } from "react"
 
-import { currentUser, getSession } from "@/lib/api/client"
+import { currentUser, getSession, subscribeToSession } from "@/lib/api/client"
 import { homeForRole } from "@/lib/auth/routing"
 
 export function PublicAuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const redirected = useRef(false)
-  const hasSession = Boolean(getSession())
+  const hasSession = useSyncExternalStore(subscribeToSession, () => Boolean(getSession()), () => false)
   const { data: user, isLoading } = useQuery({
     queryKey: ["auth", "me"],
     queryFn: currentUser,

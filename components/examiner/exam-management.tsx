@@ -1,21 +1,31 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import {
-  IconArrowRight,
-  IconCopy,
-  IconLink,
-  IconLockShare,
+  IconArchive,
+  IconArrowLeft,
+  IconCalendar,
+  IconCheck,
+  IconChevronDown,
+  IconClipboardList,
+  IconClock,
+  IconDotsVertical,
+  IconEdit,
+  IconEye,
+  IconFilter,
+  IconLock,
   IconPlus,
   IconRocket,
+  IconSearch,
   IconTrash,
+  IconWorld,
   IconX,
 } from "@tabler/icons-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { EmptyState, PageHeading, StatusBadge, entityId } from "@/components/workspace/page-elements"
+import { entityId } from "@/components/workspace/page-elements"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,426 +36,602 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
-import { ApiRequestError, apiRequest, currentUser } from "@/lib/api/client"
-import type { Exam, ExamAccessInfo, Question, QuestionBank } from "@/lib/api/types"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ApiRequestError, apiRequest } from "@/lib/api/client"
+import type { Exam, ExamStatus } from "@/lib/api/types"
 
-const defaultAntiCheat = {
-  requireFullscreen: true,
-  detectTabSwitch: true,
-  detectWindowBlur: true,
-  disableRightClick: true,
-  disableCopyPaste: true,
-  blockDevToolsShortcuts: true,
-  preventMultipleSessions: true,
-  requireWebcam: false,
-  captureSnapshots: false,
-  captureScreenshots: false,
+// ─── Metadata ─────────────────────────────────────────────────────────────────
+
+const STATUS_META: Record<ExamStatus, { label: string; color: string }> = {
+  DRAFT:     { label: "Draft",     color: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400 dark:border-gray-800" },
+  PUBLISHED: { label: "Published", color: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/40" },
+  SCHEDULED: { label: "Scheduled", color: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-900/40" },
+  ACTIVE:    { label: "Active",    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/40" },
+  CLOSED:    { label: "Closed",    color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/40" },
+  DISABLED:  { label: "Disabled",  color: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-900/40" },
+  CANCELLED: { label: "Cancelled", color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/40" },
+  ARCHIVED:  { label: "Archived",  color: "bg-muted/60 text-muted-foreground border-border" },
 }
 
-export function ExamManagement({ basePath = "/examiner/exams" }: { basePath?: string }) {
+const ACCESS_META: Record<string, { label: string; icon: React.ReactNode }> = {
+  PUBLIC_LINK_WITH_CODE:    { label: "Public",  icon: <IconWorld className="size-3.5" /> },
+  LOGIN_REQUIRED_WITH_CODE: { label: "Private", icon: <IconLock  className="size-3.5" /> },
+  INVITE_ONLY:              { label: "Private", icon: <IconLock  className="size-3.5" /> },
+}
+
+const STATUS_FILTERS: Array<{ key: ExamStatus | "ALL"; label: string }> = [
+  { key: "ALL",       label: "All"       },
+  { key: "DRAFT",     label: "Draft"     },
+  { key: "PUBLISHED", label: "Published" },
+  { key: "ACTIVE",    label: "Active"    },
+  { key: "CLOSED",    label: "Closed"    },
+  { key: "ARCHIVED",  label: "Archived"  },
+]
+
+function fmtDate(d?: string) {
+  if (!d) return "—"
+  return new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+}
+
+function fmtDuration(mins: number) {
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60), m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+// ─── ExamManagement ───────────────────────────────────────────────────────────
+
+export function ExamManagement() {
   const queryClient = useQueryClient()
-  const { data: actor } = useQuery({ queryKey: ["auth", "me"], queryFn: currentUser })
-  const canAuthor = actor?.role === "EXAMINER"
-  const canOpenExam = canAuthor || Boolean(actor?.permissions.includes("VIEW_REPORTS"))
-  const [bankId, setBankId] = useState("")
-  const [selectedQuestions, setSelectedQuestions] = useState<string[]>([])
-  const [options, setOptions] = useState({ randomizeQuestions: false, randomizeOptions: false, showResultImmediately: false })
-  const [antiCheat, setAntiCheat] = useState(defaultAntiCheat)
-  const [customFields, setCustomFields] = useState<Array<{ key: string; label: string; type: "text" | "email" | "tel" | "number"; placeholder: string; required: boolean }>>([])
-  const [archiving, setArchiving] = useState<Exam | null>(null)
-  const [activeExamId, setActiveExamId] = useState("")
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<ExamStatus | "ALL">("ALL")
+  const [accessFilter, setAccessFilter] = useState<string>("ALL")
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [actionTarget, setActionTarget] = useState<{
+    exam: Exam; action: "publish" | "unpublish" | "close" | "archive" | "delete"
+  } | null>(null)
 
-  const banks = useQuery({ queryKey: ["question-banks"], queryFn: () => apiRequest<QuestionBank[]>("/question-banks?limit=50").then((response) => response.data), enabled: Boolean(canAuthor) })
-  const currentBankId = bankId || entityId(banks.data?.[0] ?? {})
-  const questions = useQuery({
-    queryKey: ["examiner", "questions", currentBankId],
-    queryFn: () => apiRequest<Question[]>(`/questions?limit=100&questionBank=${currentBankId}`).then((response) => response.data),
-    enabled: Boolean(canAuthor && currentBankId),
+  const exams = useQuery({
+    queryKey: ["exams"],
+    queryFn: () => apiRequest<Exam[]>("/exams?limit=200").then((r) => r.data),
   })
-  const exams = useQuery({ queryKey: ["exams"], queryFn: () => apiRequest<Exam[]>("/exams?limit=50").then((response) => response.data) })
-  const currentActiveExamId = activeExamId || entityId(exams.data?.[0] ?? {})
-  const accessInfo = useQuery({
-    queryKey: ["exam-access-info", currentActiveExamId],
-    queryFn: () => apiRequest<ExamAccessInfo>(`/exams/${currentActiveExamId}/access-info`).then((response) => response.data),
-    enabled: Boolean(currentActiveExamId),
-  })
-  const action = useMutation({
-    mutationFn: ({ path, method, body }: { path: string; method: "POST" | "DELETE"; body?: object }) => apiRequest<Exam>(path, { method, body: body ? JSON.stringify(body) : undefined }),
-    onSuccess: (_, variables) => {
-      const message = variables.method === "DELETE"
-        ? "Exam archived."
-        : variables.path.endsWith("/publish")
-          ? "Exam published."
-          : variables.path.endsWith("/close")
-            ? "Exam closed."
-            : variables.path.endsWith("/regenerate-access-code")
-              ? "Access code regenerated."
-              : variables.path.endsWith("/regenerate-link")
-                ? "Public link regenerated."
-                : "Exam draft created."
-      toast.success(message)
-      queryClient.invalidateQueries({ queryKey: ["exams"] })
-      queryClient.invalidateQueries({ queryKey: ["exam-access-info"] })
-      setSelectedQuestions([])
-      setArchiving(null)
+
+  const actionMutation = useMutation({
+    mutationFn: ({ exam, action }: { exam: Exam; action: string }) => {
+      const id = entityId(exam)
+      if (action === "publish")   return apiRequest(`/exams/${id}/publish`,   { method: "POST" })
+      if (action === "unpublish") return apiRequest(`/exams/${id}/unpublish`, { method: "POST" })
+      if (action === "close")     return apiRequest(`/exams/${id}/close`,     { method: "POST" })
+      if (action === "archive")   return apiRequest(`/exams/${id}/archive`,   { method: "POST" })
+      if (action === "delete")    return apiRequest(`/exams/${id}`,           { method: "DELETE" })
+      throw new Error("Unknown action.")
     },
-    onError: (error: ApiRequestError) => toast.error(error.message),
+    onSuccess: (_, vars) => {
+      const labels: Record<string, string> = {
+        publish: "Exam published.", unpublish: "Exam unpublished.", close: "Exam closed.",
+        archive: "Exam archived.", delete: "Exam permanently deleted.",
+      }
+      toast.success(labels[vars.action] ?? "Done.")
+      setActionTarget(null)
+      queryClient.invalidateQueries({ queryKey: ["exams"] })
+    },
+    onError: (e: ApiRequestError) => toast.error(e.message),
   })
 
-  const sortedExams = useMemo(() => (exams.data ?? []).slice().sort((left, right) => new Date(right.updatedAt ?? right.createdAt ?? 0).getTime() - new Date(left.updatedAt ?? left.createdAt ?? 0).getTime()), [exams.data])
-  const selectedExam = sortedExams.find((exam) => entityId(exam) === currentActiveExamId) ?? sortedExams[0]
-
-  function createExam(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!selectedQuestions.length) {
-      toast.error("Select at least one question.")
-      return
-    }
-    if (customFields.some((field) => !field.key.trim() || !field.label.trim())) {
-      toast.error("Each additional candidate field needs a label and a field key.")
-      return
-    }
-    const form = new FormData(event.currentTarget)
-    action.mutate({
-      path: "/exams",
-      method: "POST",
-      body: {
-        title: String(form.get("title")),
-        questionBank: String(form.get("questionBank")),
-        description: String(form.get("description")),
-        instructions: String(form.get("instructions")),
-        durationMinutes: Number(form.get("durationMinutes")),
-        availabilityMode: String(form.get("availabilityMode")),
-        startTime: form.get("startTime") ? new Date(String(form.get("startTime"))).toISOString() : undefined,
-        endTime: form.get("endTime") ? new Date(String(form.get("endTime"))).toISOString() : undefined,
-        questions: selectedQuestions,
-        passMark: Number(form.get("passMark")),
-        randomizeQuestions: options.randomizeQuestions,
-        randomizeOptions: options.randomizeOptions,
-        showResultImmediately: options.showResultImmediately,
-        maxAttempts: Number(form.get("maxAttempts")),
-        maxAttemptsPerCandidate: Number(form.get("maxAttempts")),
-        candidateIdentityRequirements: {
-          fullName: true,
-          email: true,
-          phone: Boolean(form.get("requirePhone")),
-          identifier: Boolean(form.get("requireIdentifier")),
-          customFields,
-        },
-        antiCheatSettings: {
-          ...antiCheat,
-          snapshotIntervalSeconds: Number(form.get("snapshotIntervalSeconds")),
-          screenshotIntervalSeconds: Number(form.get("screenshotIntervalSeconds")),
-          maxTabSwitches: Number(form.get("maxTabSwitches")),
-          maxFullscreenExits: Number(form.get("maxFullscreenExits")),
-          maxWindowBlurEvents: Number(form.get("maxWindowBlurEvents")),
-          maxRefreshAttempts: Number(form.get("maxRefreshAttempts")),
-          autoSubmitViolationScore: Number(form.get("autoSubmitViolationScore")),
-          warningViolationScore: Number(form.get("warningViolationScore")),
-          finalWarningViolationScore: Number(form.get("finalWarningViolationScore")),
-          maxAwaySeconds: Number(form.get("maxAwaySeconds")),
-        },
-      },
+  const filtered = useMemo(() => {
+    return (exams.data ?? []).filter((e) => {
+      const q = search.toLowerCase()
+      const matchSearch = !q || e.title.toLowerCase().includes(q) || (e.code ?? "").toLowerCase().includes(q) || (e.description ?? "").toLowerCase().includes(q)
+      const matchStatus = statusFilter === "ALL" || e.status === statusFilter
+      const matchAccess = accessFilter === "ALL" || e.accessType === accessFilter ||
+        (accessFilter === "LOGIN_REQUIRED_WITH_CODE" && e.accessType === "INVITE_ONLY")
+      return matchSearch && matchStatus && matchAccess
     })
-    event.currentTarget.reset()
-    setCustomFields([])
-    setSelectedQuestions([])
-    setOptions({ randomizeQuestions: false, randomizeOptions: false, showResultImmediately: false })
-    setAntiCheat(defaultAntiCheat)
-  }
+  }, [exams.data, search, statusFilter, accessFilter])
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { ALL: exams.data?.length ?? 0 }
+    for (const e of exams.data ?? []) c[e.status] = (c[e.status] ?? 0) + 1
+    return c
+  }, [exams.data])
+
+  const activeFilterCount = (statusFilter !== "ALL" ? 1 : 0) + (accessFilter !== "ALL" ? 1 : 0)
 
   return (
-    <div className="flex flex-col gap-6 py-6">
-      <PageHeading
-        title="Examinations"
-        description={canAuthor ? "Design, publish, and monitor secure assessments with clear candidate intake and anti-cheat controls." : "Review published examinations, access state, and integrity posture across the platform."}
-        action={canAuthor ? <Button asChild><a href="#exam-builder"><IconPlus className="size-4" /> Create new exam</a></Button> : undefined}
-      />
+    <div className="flex min-h-full flex-col bg-[#f8f9fc] dark:bg-background">
 
-      <div className={`grid gap-4 px-4 lg:px-6 ${canAuthor ? "xl:grid-cols-[1.05fr_.95fr]" : ""}`}>
-        {canAuthor ? (
-          <div id="exam-builder" className="space-y-4">
-            <Card className="border-border/70 bg-card/92 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><IconPlus className="size-5" /> Create exam draft</CardTitle>
-                <CardDescription>Build a professional exam in sections: identity, questions, candidate intake, anti-cheat settings, and publish readiness.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={createExam} className="space-y-4">
-                  <Card className="border-border/70">
-                    <CardHeader>
-                      <CardTitle>Exam identity and visibility</CardTitle>
-                      <CardDescription>Set the exam title, timing, and basic publishing window.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FieldGroup>
-                        <Field><FieldLabel>Title</FieldLabel><Input name="title" required /></Field>
-                        <Field><FieldLabel>Description</FieldLabel><Input name="description" /></Field>
-                        <Field><FieldLabel>Instructions</FieldLabel><Textarea name="instructions" placeholder="Rules candidates must review before starting." /></Field>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <Field><FieldLabel>Availability</FieldLabel><select name="availabilityMode" defaultValue="ALWAYS_OPEN" className="h-9 rounded-md border bg-background px-3 text-sm"><option value="ALWAYS_OPEN">Always open</option><option value="SCHEDULED">Scheduled</option></select></Field>
-                          <Field><FieldLabel>Start time</FieldLabel><Input name="startTime" type="datetime-local" /></Field>
-                          <Field><FieldLabel>End time</FieldLabel><Input name="endTime" type="datetime-local" /></Field>
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <Field><FieldLabel>Minutes</FieldLabel><Input name="durationMinutes" type="number" min="1" defaultValue="60" required /></Field>
-                          <Field><FieldLabel>Pass mark</FieldLabel><Input name="passMark" type="number" min="0" defaultValue="1" required /></Field>
-                          <Field><FieldLabel>Attempts per candidate</FieldLabel><Input name="maxAttempts" type="number" min="1" defaultValue="1" required /></Field>
-                        </div>
-                      </FieldGroup>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-border/70">
-                    <CardHeader>
-                      <CardTitle>Question source</CardTitle>
-                      <CardDescription>Choose a question bank, then select the exact questions to include in this draft.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FieldGroup>
-                        <Field>
-                          <FieldLabel>Question bank</FieldLabel>
-                          <select name="questionBank" value={currentBankId} onChange={(event) => { setBankId(event.target.value); setSelectedQuestions([]) }} required className="h-9 rounded-md border bg-background px-3 text-sm">
-                            <option value="">Select question bank</option>
-                            {banks.data?.map((bank) => <option value={entityId(bank)} key={entityId(bank)}>{bank.title}</option>)}
-                          </select>
-                        </Field>
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {(questions.data ?? []).map((question) => {
-                            const id = entityId(question)
-                            const selected = selectedQuestions.includes(id)
-                            return (
-                              <label key={id} className={`flex items-start gap-3 rounded-2xl border p-4 text-sm transition ${selected ? "border-primary bg-primary/5" : "hover:border-primary/40 hover:bg-muted/20"}`}>
-                                <Checkbox checked={selected} onCheckedChange={(checked) => setSelectedQuestions((items) => checked ? [...items, id] : items.filter((item) => item !== id))} />
-                                <span>
-                                  <span className="block font-medium">{question.questionText}</span>
-                                  <span className="mt-1 block text-muted-foreground">{question.topic || "No topic"} • {question.difficulty}</span>
-                                </span>
-                              </label>
-                            )
-                          })}
-                          {!questions.data?.length && <EmptyState message="Select a question bank first to load your authored questions." />}
-                        </div>
-                      </FieldGroup>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-border/70">
-                    <CardHeader>
-                      <CardTitle>Candidate information requirements</CardTitle>
-                      <CardDescription>Define the base identity fields and any extra lecturer-requested details candidates must complete before starting.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3 rounded-2xl border p-4 sm:grid-cols-2">
-                        <label className="flex items-center gap-2 text-sm"><Checkbox checked disabled /> Full name required</label>
-                        <label className="flex items-center gap-2 text-sm"><Checkbox checked disabled /> Email required</label>
-                        <label className="flex items-center gap-2 text-sm"><Checkbox name="requirePhone" /> Require phone</label>
-                        <label className="flex items-center gap-2 text-sm"><Checkbox name="requireIdentifier" /> Require ID / applicant number</label>
-                      </div>
-                      <div className="space-y-3 rounded-2xl border p-4">
-                        <div>
-                          <p className="font-medium">Additional candidate fields</p>
-                          <p className="text-sm text-muted-foreground">These appear on the public exam start form so candidates can provide the exact information you request.</p>
-                        </div>
-                        {customFields.map((field, index) => (
-                          <div key={`${field.key}-${index}`} className="grid gap-3 rounded-2xl border p-3 md:grid-cols-[1fr_1fr_140px_1fr_auto]">
-                            <Input value={field.label} placeholder="Field label" onChange={(event) => setCustomFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} />
-                            <Input value={field.key} placeholder="fieldKey" onChange={(event) => setCustomFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, key: event.target.value.replace(/[^a-zA-Z0-9_]/g, "") } : item))} />
-                            <select value={field.type} onChange={(event) => setCustomFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value as "text" | "email" | "tel" | "number" } : item))} className="h-9 rounded-md border bg-background px-3 text-sm">
-                              <option value="text">Text</option>
-                              <option value="email">Email</option>
-                              <option value="tel">Phone</option>
-                              <option value="number">Number</option>
-                            </select>
-                            <Input value={field.placeholder} placeholder="Placeholder" onChange={(event) => setCustomFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, placeholder: event.target.value } : item))} />
-                            <div className="flex items-center gap-3">
-                              <label className="flex items-center gap-2 text-sm"><Checkbox checked={field.required} onCheckedChange={(checked) => setCustomFields((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, required: Boolean(checked) } : item))} /> Required</label>
-                              <Button type="button" variant="ghost" size="icon-sm" onClick={() => setCustomFields((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="Remove field"><IconTrash /></Button>
-                            </div>
-                          </div>
-                        ))}
-                        <Button type="button" variant="outline" onClick={() => setCustomFields((current) => [...current, { key: "", label: "", type: "text", placeholder: "", required: false }])}>Add requested field</Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-border/70">
-                    <CardHeader>
-                      <CardTitle>Anti-cheat settings</CardTitle>
-                      <CardDescription>Configure the monitoring experience and the thresholds that can warn or auto-submit a candidate.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3 rounded-2xl border p-4 sm:grid-cols-2">
-                        {([
-                          ["requireFullscreen", "Require fullscreen"], ["detectTabSwitch", "Detect tab changes"], ["detectWindowBlur", "Detect focus loss"],
-                          ["disableRightClick", "Block right click"], ["disableCopyPaste", "Block copy/paste"], ["blockDevToolsShortcuts", "Flag devtools shortcuts"],
-                          ["preventMultipleSessions", "Prevent duplicate sessions"], ["requireWebcam", "Require webcam"], ["captureSnapshots", "Capture snapshots"],
-                          ["captureScreenshots", "Capture screenshots"],
-                        ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><Switch checked={antiCheat[key]} onCheckedChange={(checked) => setAntiCheat((current) => ({ ...current, [key]: checked }))} />{label}</label>)}
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        <Field><FieldLabel>Warning score</FieldLabel><Input name="warningViolationScore" type="number" min="1" defaultValue="3" /></Field>
-                        <Field><FieldLabel>Final warning score</FieldLabel><Input name="finalWarningViolationScore" type="number" min="1" defaultValue="5" /></Field>
-                        <Field><FieldLabel>Auto-submit score</FieldLabel><Input name="autoSubmitViolationScore" type="number" min="1" defaultValue="8" /></Field>
-                        <Field><FieldLabel>Max tab switches</FieldLabel><Input name="maxTabSwitches" type="number" min="0" defaultValue="2" /></Field>
-                        <Field><FieldLabel>Max fullscreen exits</FieldLabel><Input name="maxFullscreenExits" type="number" min="0" defaultValue="2" /></Field>
-                        <Field><FieldLabel>Max focus losses</FieldLabel><Input name="maxWindowBlurEvents" type="number" min="0" defaultValue="2" /></Field>
-                        <Field><FieldLabel>Max refresh attempts</FieldLabel><Input name="maxRefreshAttempts" type="number" min="0" defaultValue="2" /></Field>
-                        <Field><FieldLabel>Maximum away seconds</FieldLabel><Input name="maxAwaySeconds" type="number" min="1" defaultValue="10" /></Field>
-                        <Field><FieldLabel>Snapshot interval</FieldLabel><Input name="snapshotIntervalSeconds" type="number" min="1" defaultValue="60" /></Field>
-                        <Field><FieldLabel>Screenshot interval</FieldLabel><Input name="screenshotIntervalSeconds" type="number" min="1" defaultValue="60" /></Field>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-border/70">
-                    <CardHeader>
-                      <CardTitle>Publish behavior</CardTitle>
-                      <CardDescription>Set how the exam behaves after candidates enter: randomization, result visibility, and secure delivery posture.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3 rounded-2xl border p-4 sm:grid-cols-3">
-                        <label className="flex items-center gap-2 text-sm"><Switch checked={options.randomizeQuestions} onCheckedChange={(checked) => setOptions((current) => ({ ...current, randomizeQuestions: checked }))} /> Randomize questions</label>
-                        <label className="flex items-center gap-2 text-sm"><Switch checked={options.randomizeOptions} onCheckedChange={(checked) => setOptions((current) => ({ ...current, randomizeOptions: checked }))} /> Randomize options</label>
-                        <label className="flex items-center gap-2 text-sm"><Switch checked={options.showResultImmediately} onCheckedChange={(checked) => setOptions((current) => ({ ...current, showResultImmediately: checked }))} /> Show result instantly</label>
-                      </div>
-                      <div className="rounded-2xl border bg-muted/25 p-4 text-sm text-muted-foreground">
-                        Publishing this draft will generate a public exam link, a branded exam code like <span className="font-medium text-foreground">AR1214</span>, and a separate secure 6-digit candidate access code.
-                      </div>
-                      <Button disabled={action.isPending}>
-                        <IconPlus className="size-4" />
-                        {action.isPending ? "Saving draft..." : "Save exam draft"}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
-
-        <div className="space-y-4">
-          <Card className="border-border/70 bg-card/92 shadow-sm">
-            <CardHeader>
-              <CardTitle>Managed exams</CardTitle>
-              <CardDescription>{canAuthor ? "Your authored exams appear here with access state, publishing controls, and quick actions." : "Review platform exams and open the relevant report or detail workspace."}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {!sortedExams.length ? (
-                <EmptyState message="No exams created yet." />
-              ) : (
-                <div className="space-y-3">
-                  {sortedExams.map((exam) => {
-                    const id = entityId(exam)
-                    const active = currentActiveExamId === id
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setActiveExamId(id)}
-                        className={`w-full rounded-2xl border p-4 text-left transition ${active ? "border-primary bg-primary/5" : "hover:border-primary/40 hover:bg-muted/20"}`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-lg font-semibold">{exam.title}</p>
-                              {exam.code && <Badge variant="outline">{exam.code}</Badge>}
-                            </div>
-                            <p className="mt-1 text-sm text-muted-foreground">
-                              {typeof exam.questionBank === "object" && exam.questionBank ? exam.questionBank.title : "Question bank attached"} • {exam.publicUrl ? "Public link ready" : "Link generated on publish"}
-                            </p>
-                          </div>
-                          <StatusBadge status={exam.status} />
-                        </div>
-                        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>Updated {new Date(exam.updatedAt ?? exam.createdAt ?? "").toLocaleString()}</span>
-                          <span>•</span>
-                          <span>{exam.randomizeQuestions ? "Randomized delivery" : "Fixed order"}</span>
-                        </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {canAuthor && exam.status === "DRAFT" && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); action.mutate({ path: `/exams/${id}/publish`, method: "POST" }) }}><IconRocket className="size-4" /> Publish</Button>}
-                          {canAuthor && ["PUBLISHED", "SCHEDULED", "ACTIVE"].includes(exam.status) && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); action.mutate({ path: `/exams/${id}/close`, method: "POST" }) }}><IconX className="size-4" /> Close</Button>}
-                          {canAuthor && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); action.mutate({ path: `/exams/${id}/regenerate-link`, method: "POST" }) }}><IconLink className="size-4" /> Regenerate link</Button>}
-                          {canAuthor && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); action.mutate({ path: `/exams/${id}/regenerate-access-code`, method: "POST" }) }}><IconLockShare className="size-4" /> Regenerate 6-digit code</Button>}
-                          {canAuthor && <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); setArchiving(exam) }}><IconTrash className="size-4" /> Archive</Button>}
-                          {canOpenExam && <Button size="sm" asChild onClick={(event) => event.stopPropagation()}><Link href={canAuthor ? `${basePath}/${id}` : "/admin/reports"}><IconArrowRight className="size-4" /> {canAuthor ? "Open control room" : "Open reports"}</Link></Button>}
-                        </div>
-                      </button>
-                    )
-                  })}
+      {/* ── Hero ── */}
+      <div className="border-b bg-white px-4 pb-5 pt-6 dark:bg-card sm:px-6 sm:pb-6 sm:pt-8">
+        <div className="mx-auto max-w-5xl">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:size-9">
+                  <IconClipboardList className="size-4 text-primary sm:size-5" />
+                </div>
+                <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Exams</h1>
+              </div>
+              <p className="mt-1.5 max-w-md text-sm text-muted-foreground">
+                Create and manage your exams. Publish, monitor candidates, and review results.
+              </p>
+              {exams.data && exams.data.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs sm:gap-4 sm:text-sm">
+                  <span>
+                    <strong className="text-foreground">{exams.data.length}</strong>
+                    <span className="ml-1 text-muted-foreground">exam{exams.data.length === 1 ? "" : "s"}</span>
+                  </span>
+                  {(counts["ACTIVE"] ?? 0) > 0 && (
+                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                      <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                      {counts["ACTIVE"]} active
+                    </span>
+                  )}
+                  {(counts["DRAFT"] ?? 0) > 0 && (
+                    <span className="text-muted-foreground">{counts["DRAFT"]} draft{counts["DRAFT"] === 1 ? "" : "s"}</span>
+                  )}
+                  {(counts["PUBLISHED"] ?? 0) > 0 && (
+                    <span className="text-muted-foreground">{counts["PUBLISHED"]} published</span>
+                  )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {selectedExam && (
-            <Card className="border-border/70 bg-card/92 shadow-sm">
-              <CardHeader>
-                <CardTitle>Access and publishing panel</CardTitle>
-                <CardDescription>Focused access details for the selected exam, including the branded code and public entry state.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl border bg-muted/25 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-xl font-semibold">{selectedExam.title}</p>
-                    <StatusBadge status={selectedExam.status} />
-                    {accessInfo.data?.code && <Badge variant="outline">{accessInfo.data.code}</Badge>}
-                  </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{accessInfo.data?.publicUrl || selectedExam.publicUrl || "Public link will appear here once the exam is published."}</p>
+            <Link href="/examiner/exams/create" className="shrink-0">
+              <Button size="sm" className="gap-1.5">
+                <IconPlus className="size-4" />
+                <span className="hidden sm:inline">Create Exam</span>
+                <span className="sm:hidden">New</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Filter bar ── */}
+      <div className="border-b bg-white px-4 py-3 dark:bg-card sm:px-6">
+        <div className="mx-auto max-w-5xl space-y-3">
+          {/* Search + filter toggle */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by title, code, or description…"
+                className="h-9 w-full rounded-lg border bg-background pl-9 pr-9 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <IconX className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFilterOpen((o) => !o)}
+              className={`relative flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                filterOpen || activeFilterCount > 0
+                  ? "border-primary/40 bg-primary/5 text-primary"
+                  : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <IconFilter className="size-3.5" />
+              <span className="hidden sm:inline">Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Expanded filter panel */}
+          {filterOpen && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-lg border bg-muted/20 px-3 py-3">
+              {/* Status */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</span>
+                <div className="flex flex-wrap gap-1">
+                  {STATUS_FILTERS.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setStatusFilter(key)}
+                      className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                        statusFilter === key
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      }`}
+                    >
+                      {label}
+                      {counts[key] != null && (
+                        <span className={`text-[10px] ${statusFilter === key ? "opacity-75" : "opacity-50"}`}>{counts[key]}</span>
+                      )}
+                    </button>
+                  ))}
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <InfoCard label="Branded exam code" value={accessInfo.data?.code || selectedExam.code || "Generated automatically"} />
-                  <InfoCard label="Public URL" value={accessInfo.data?.publicUrl || selectedExam.publicUrl || "Available after publish"} />
-                  <InfoCard label="Published at" value={accessInfo.data?.publishedAt ? new Date(accessInfo.data.publishedAt).toLocaleString() : "Not published yet"} />
-                  <InfoCard label="Last 6-digit code rotation" value={accessInfo.data?.accessCodeLastGeneratedAt ? new Date(accessInfo.data.accessCodeLastGeneratedAt).toLocaleString() : "No 6-digit code generated yet"} />
+              </div>
+
+              <div className="hidden h-4 w-px bg-border sm:block" />
+
+              {/* Access */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Access</span>
+                <div className="relative">
+                  <select
+                    value={accessFilter}
+                    onChange={(e) => setAccessFilter(e.target.value)}
+                    className="h-7 appearance-none rounded-md border bg-background pl-2.5 pr-7 text-xs font-medium outline-none focus:border-ring"
+                  >
+                    <option value="ALL">All types</option>
+                    <option value="PUBLIC_LINK_WITH_CODE">Public</option>
+                    <option value="LOGIN_REQUIRED_WITH_CODE">Private</option>
+                  </select>
+                  <IconChevronDown className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                {canAuthor ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => selectedExam && navigator.clipboard.writeText(accessInfo.data?.publicUrl || selectedExam.publicUrl || "").then(() => toast.success("Public link copied."), () => toast.error("Copy failed."))} disabled={!(accessInfo.data?.publicUrl || selectedExam.publicUrl)}>
-                      <IconCopy className="size-4" />
-                      Copy public link
-                    </Button>
-                    <Button variant="outline" onClick={() => selectedExam && action.mutate({ path: `/exams/${entityId(selectedExam)}/regenerate-link`, method: "POST" })}><IconLink className="size-4" /> Regenerate link</Button>
-                    <Button variant="outline" onClick={() => selectedExam && action.mutate({ path: `/exams/${entityId(selectedExam)}/regenerate-access-code`, method: "POST" })}><IconLockShare className="size-4" /> Regenerate 6-digit access code</Button>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
+              </div>
+
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setStatusFilter("ALL"); setAccessFilter("ALL") }}
+                  className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <IconX className="size-3" /> Clear
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      <AlertDialog open={Boolean(archiving)} onOpenChange={(open) => !open && setArchiving(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Archive examination</AlertDialogTitle>
-            <AlertDialogDescription>This examination will leave the active workspace but remain available in platform history and reports.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={action.isPending} onClick={(event) => { event.preventDefault(); if (archiving) action.mutate({ path: `/exams/${entityId(archiving)}`, method: "DELETE" }) }}>
-              Archive
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* ── List ── */}
+      <div className="flex-1 px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto max-w-5xl">
+          {!exams.isPending && (exams.data?.length ?? 0) > 0 && (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {filtered.length === (exams.data?.length ?? 0)
+                ? `${filtered.length} exam${filtered.length === 1 ? "" : "s"}`
+                : `${filtered.length} of ${exams.data?.length} exam${(exams.data?.length ?? 0) === 1 ? "" : "s"}`}
+            </p>
+          )}
+
+          {exams.isPending ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-xl border bg-white p-4 dark:bg-card sm:p-5">
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <Skeleton className="hidden size-10 shrink-0 rounded-lg sm:block" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-40 sm:w-56" />
+                      <Skeleton className="h-3 w-56 sm:w-72" />
+                      <div className="flex gap-2"><Skeleton className="h-5 w-14 rounded-full" /><Skeleton className="h-5 w-18 rounded-full" /></div>
+                    </div>
+                    <Skeleton className="size-7 shrink-0 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState hasExams={(exams.data?.length ?? 0) > 0} />
+          ) : (
+            <div className="space-y-2.5 sm:space-y-3">
+              {filtered.map((exam) => (
+                <ExamCard key={entityId(exam)} exam={exam} onAction={(action) => setActionTarget({ exam, action })} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {actionTarget && (
+        <ActionDialog
+          exam={actionTarget.exam}
+          action={actionTarget.action}
+          isPending={actionMutation.isPending}
+          onConfirm={() => actionMutation.mutate(actionTarget)}
+          onClose={() => setActionTarget(null)}
+        />
+      )}
     </div>
   )
 }
 
-function InfoCard({ label, value }: { label: string; value: string }) {
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyState({ hasExams }: { hasExams: boolean }) {
   return (
-    <div className="rounded-2xl border p-4">
-      <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">{label}</p>
-      <p className="mt-2 break-all text-sm font-medium">{value}</p>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-white py-16 text-center dark:bg-card sm:py-20">
+      <div className="flex size-14 items-center justify-center rounded-2xl bg-muted/60">
+        <IconClipboardList className="size-6 text-muted-foreground/60" />
+      </div>
+      {hasExams ? (
+        <>
+          <h3 className="mt-4 text-sm font-semibold">No exams match your filters</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Try adjusting your search or clearing filters.</p>
+        </>
+      ) : (
+        <>
+          <h3 className="mt-4 text-sm font-semibold">No exams yet</h3>
+          <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+            Create your first exam to start assessing candidates with built-in anti-cheat monitoring.
+          </p>
+          <Link href="/examiner/exams/create" className="mt-5">
+            <Button size="sm" className="gap-1.5">
+              <IconPlus className="size-4" /> Create your first exam
+            </Button>
+          </Link>
+        </>
+      )}
     </div>
+  )
+}
+
+// ─── ExamCard ─────────────────────────────────────────────────────────────────
+
+function ExamCard({ exam, onAction }: {
+  exam: Exam
+  onAction: (action: "publish" | "unpublish" | "close" | "archive" | "delete") => void
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const status = exam.status
+  const meta = STATUS_META[status]
+  const access = exam.accessType ? ACCESS_META[exam.accessType] : null
+  const qCount = Array.isArray(exam.questions) ? exam.questions.length : 0
+
+  return (
+    <div className="group rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-card">
+      <div className="flex items-start gap-3 p-4 sm:gap-4 sm:p-5">
+
+        {/* Status icon — hidden on mobile, visible sm+ */}
+        <div className={`hidden shrink-0 items-center justify-center rounded-lg border sm:flex size-10 ${
+          status === "ACTIVE"    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/40 dark:bg-emerald-950/30" :
+          status === "PUBLISHED" ? "border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-950/30" :
+          status === "SCHEDULED" ? "border-violet-200 bg-violet-50 dark:border-violet-900/40 dark:bg-violet-950/30" :
+                                   "border-muted/60 bg-muted/30"
+        }`}>
+          {status === "ACTIVE"    && <span className="size-2.5 animate-pulse rounded-full bg-emerald-500" />}
+          {status === "PUBLISHED" && <IconRocket   className="size-4.5 text-blue-600   dark:text-blue-400"   />}
+          {status === "DRAFT"     && <IconEdit     className="size-4.5 text-muted-foreground"                />}
+          {status === "SCHEDULED" && <IconCalendar className="size-4.5 text-violet-600 dark:text-violet-400" />}
+          {status === "CLOSED"    && <IconCheck    className="size-4.5 text-amber-600  dark:text-amber-400"  />}
+          {(status === "ARCHIVED" || status === "DISABLED" || status === "CANCELLED") &&
+            <IconArchive className="size-4.5 text-muted-foreground" />}
+        </div>
+
+        {/* Content */}
+        <div className="min-w-0 flex-1">
+          {/* Title + badges */}
+          <div className="flex flex-wrap items-start gap-x-2 gap-y-1">
+            <Link
+              href={`/examiner/exams/${entityId(exam)}`}
+              className="text-sm font-semibold leading-snug transition-colors hover:text-primary hover:underline underline-offset-2 sm:text-base"
+            >
+              {exam.title}
+            </Link>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {exam.code && (
+                <span className="font-mono text-[11px] text-muted-foreground">{exam.code}</span>
+              )}
+              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.color}`}>
+                {meta.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          {exam.description && (
+            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground sm:text-sm">{exam.description}</p>
+          )}
+
+          {/* Meta row */}
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <IconClipboardList className="size-3.5 shrink-0" />
+              {qCount} question{qCount === 1 ? "" : "s"}
+            </span>
+            <span className="flex items-center gap-1">
+              <IconClock className="size-3.5 shrink-0" />
+              {fmtDuration(exam.durationMinutes)}
+            </span>
+            {access && (
+              <span className="flex items-center gap-1">{access.icon}{access.label}</span>
+            )}
+            {exam.startTime && (
+              <span className="hidden items-center gap-1 sm:flex">
+                <IconCalendar className="size-3.5 shrink-0" />
+                {fmtDate(exam.startTime)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Link href={`/examiner/exams/${entityId(exam)}`}>
+            <button
+              type="button"
+              title="View exam"
+              className="flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <IconEye className="size-4" />
+            </button>
+          </Link>
+
+          <div className="relative">
+            <button
+              type="button"
+              title="More actions"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((c) => !c) }}
+              className={`flex size-8 items-center justify-center rounded-lg transition-colors ${
+                menuOpen ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <IconDotsVertical className="size-4" />
+            </button>
+
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-9 z-30 min-w-48 overflow-hidden rounded-xl border bg-popover shadow-lg">
+                  <div className="py-1.5">
+                    <MenuLink href={`/examiner/exams/${entityId(exam)}`} icon={<IconEye className="size-4" />} onClick={() => setMenuOpen(false)}>
+                      View &amp; manage
+                    </MenuLink>
+                    <MenuLink href={`/examiner/exams/${entityId(exam)}/edit`} icon={<IconEdit className="size-4" />} onClick={() => setMenuOpen(false)}>
+                      Edit settings
+                    </MenuLink>
+
+                    <div className="my-1 border-t" />
+
+                    {status === "DRAFT" && (
+                      <MenuItem icon={<IconRocket className="size-4 text-blue-500" />} onClick={() => { setMenuOpen(false); onAction("publish") }}>
+                        Publish
+                      </MenuItem>
+                    )}
+                    {(status === "PUBLISHED" || status === "SCHEDULED") && (
+                      <MenuItem icon={<IconArrowLeft className="size-4 text-muted-foreground" />} onClick={() => { setMenuOpen(false); onAction("unpublish") }}>
+                        Unpublish
+                      </MenuItem>
+                    )}
+                    {(status === "PUBLISHED" || status === "ACTIVE") && (
+                      <MenuItem icon={<IconCheck className="size-4 text-amber-500" />} onClick={() => { setMenuOpen(false); onAction("close") }}>
+                        Close exam
+                      </MenuItem>
+                    )}
+                    {(status === "CLOSED" || status === "DRAFT") && (
+                      <MenuItem icon={<IconArchive className="size-4 text-muted-foreground" />} onClick={() => { setMenuOpen(false); onAction("archive") }}>
+                        Archive
+                      </MenuItem>
+                    )}
+
+                    <div className="my-1 border-t" />
+
+                    <MenuItem icon={<IconTrash className="size-4" />} destructive onClick={() => { setMenuOpen(false); onAction("delete") }}>
+                      Delete permanently
+                    </MenuItem>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Menu helpers ─────────────────────────────────────────────────────────────
+
+function MenuLink({ href, icon, onClick, children }: {
+  href: string; icon: React.ReactNode; onClick: () => void; children: React.ReactNode
+}) {
+  return (
+    <Link href={href} onClick={onClick}>
+      <button type="button" className="flex w-full items-center gap-2.5 px-3.5 py-2 text-sm text-foreground hover:bg-muted/60">
+        <span className="text-muted-foreground">{icon}</span>
+        {children}
+      </button>
+    </Link>
+  )
+}
+
+function MenuItem({ icon, destructive = false, onClick, children }: {
+  icon: React.ReactNode; destructive?: boolean; onClick: () => void; children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-sm transition-colors ${
+        destructive ? "text-destructive hover:bg-destructive/5" : "text-foreground hover:bg-muted/60"
+      }`}
+    >
+      <span className={destructive ? "text-destructive" : "text-muted-foreground"}>{icon}</span>
+      {children}
+    </button>
+  )
+}
+
+// ─── ActionDialog ─────────────────────────────────────────────────────────────
+
+function ActionDialog({ exam, action, isPending, onConfirm, onClose }: {
+  exam: Exam; action: "publish" | "unpublish" | "close" | "archive" | "delete"
+  isPending: boolean; onConfirm: () => void; onClose: () => void
+}) {
+  const [confirmInput, setConfirmInput] = useState("")
+
+  const config = {
+    publish: {
+      title: "Publish this exam?",
+      description: "Candidates will be able to access this exam once published. Make sure you have reviewed all questions and settings.",
+      confirmLabel: "Publish exam", variant: "default" as const, requiresTypedConfirm: false,
+    },
+    unpublish: {
+      title: "Unpublish this exam?",
+      description: "The exam returns to draft. Candidates can no longer access it until you publish again.",
+      confirmLabel: "Unpublish exam", variant: "default" as const, requiresTypedConfirm: false,
+    },
+    close: {
+      title: "Close this exam?",
+      description: "No new attempts will be accepted. Candidates currently in-progress will be auto-submitted.",
+      confirmLabel: "Close exam", variant: "default" as const, requiresTypedConfirm: false,
+    },
+    archive: {
+      title: "Archive this exam?",
+      description: "The exam is hidden from your active list but all data — questions, attempts, and results — is preserved. You can restore it later.",
+      confirmLabel: "Archive exam", variant: "default" as const, requiresTypedConfirm: false,
+    },
+    delete: {
+      title: "Permanently delete this exam?",
+      description: "This will irreversibly remove the exam, all questions, candidate attempts, and results. There is no way to recover this data.",
+      confirmLabel: "Permanently delete", variant: "destructive" as const, requiresTypedConfirm: true,
+    },
+  }[action]
+
+  const canConfirm = !config.requiresTypedConfirm || confirmInput === exam.title
+
+  return (
+    <AlertDialog open onOpenChange={(open) => !open && onClose()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className={action === "delete" ? "text-destructive" : ""}>{config.title}</AlertDialogTitle>
+          <AlertDialogDescription>{config.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+
+        <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm">
+          <p className="font-medium">{exam.title}</p>
+          {exam.code && <p className="mt-0.5 font-mono text-xs text-muted-foreground">{exam.code}</p>}
+        </div>
+
+        {config.requiresTypedConfirm && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Type <strong className="select-all font-semibold text-foreground">{exam.title}</strong> to confirm.
+            </p>
+            <input
+              value={confirmInput}
+              onChange={(e) => setConfirmInput(e.target.value)}
+              placeholder={exam.title}
+              autoFocus
+              className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
+            />
+          </div>
+        )}
+
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isPending}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant={config.variant}
+            disabled={isPending || !canConfirm}
+            onClick={(e) => { e.preventDefault(); onConfirm() }}
+          >
+            {isPending ? "Please wait…" : config.confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

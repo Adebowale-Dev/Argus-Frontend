@@ -21,7 +21,7 @@ export function RegisterExaminerForm({
     mutationFn: registerExaminer,
     onSuccess: (user) => {
       toast.success(`${user.fullName} is ready for ARGUS.`, {
-        description: "Your examiner account has been created. Sign in to start building question banks.",
+        description: "Your examiner account has been created. Sign in to start building exams.",
       })
       router.replace("/login")
     },
@@ -44,7 +44,7 @@ export function RegisterExaminerForm({
       <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-xl">Create examiner account</CardTitle>
-          <CardDescription>Start building secure exams, question banks, and public assessment links.</CardDescription>
+          <CardDescription>Register your examiner workspace to build question banks and publish secure exams.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit}>
@@ -79,7 +79,7 @@ export function RegisterExaminerForm({
         </CardContent>
       </Card>
       <FieldDescription className="px-6 text-center">
-        Examiner accounts create and publish exams. Platform admin controls still apply.
+        Examiner accounts create and monitor exams through the ARGUS workspace.
       </FieldDescription>
     </div>
   )

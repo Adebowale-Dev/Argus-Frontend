@@ -133,7 +133,7 @@ export function PlatformReports() {
                       <TableHeader><TableRow><TableHead>Candidate</TableHead><TableHead>Status</TableHead><TableHead>Expires</TableHead><TableHead>Violation Score</TableHead><TableHead>Score</TableHead></TableRow></TableHeader>
                       <TableBody>{attempts.data.map((attempt) => (
                         <TableRow key={entityId(attempt)}>
-                          <TableCell>{attempt.candidate?.fullName ?? "-"}</TableCell>
+                          <TableCell>{attempt.candidateProfile?.fullName ?? attempt.candidate?.fullName ?? "-"}</TableCell>
                           <TableCell><StatusBadge status={attempt.status} /></TableCell>
                           <TableCell>{new Date(attempt.expiresAt).toLocaleString()}</TableCell>
                           <TableCell>{attempt.violationScore ?? 0}</TableCell>

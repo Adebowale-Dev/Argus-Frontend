@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { IconCalendarTime, IconChartBar, IconShieldCheck, IconUserPlus } from "@tabler/icons-react"
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts"
 
 import { SectionCards, type DashboardCard } from "@/components/section-cards"
 import { Badge } from "@/components/ui/badge"
@@ -55,6 +56,10 @@ export function DashboardHome({ space }: { space: "admin" | "examiner" | "candid
   const adminItems = adminDashboard.data?.recentFlaggedAttempts ?? []
   const examinerItems = examinerDashboard.data?.recentExams ?? []
   const candidateItems = candidateDashboard.data?.assignedExams ?? []
+  const adminExamStatusChart = adminDashboard.data?.charts?.examStatus ?? []
+  const adminInviteChart = adminDashboard.data?.charts?.inviteFunnel ?? []
+  const examinerInviteChart = examinerDashboard.data?.charts?.invites ?? []
+  const examinerOutcomeChart = examinerDashboard.data?.charts?.outcomes ?? []
 
   return (
     <div className="flex flex-1 flex-col">
@@ -153,6 +158,40 @@ export function DashboardHome({ space }: { space: "admin" | "examiner" | "candid
               </CardContent>
             </Card>
           </div>
+          {space !== "candidate" && (
+            <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>{space === "admin" ? "Exam status mix" : "Invite verification status"}</CardTitle>
+                  <CardDescription>{space === "admin" ? "Live platform distribution of exam lifecycle states." : "How your verified invite lists are progressing."}</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={space === "admin" ? adminExamStatusChart : examinerInviteChart}>
+                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                      <XAxis dataKey={space === "admin" ? "status" : "status"} tickLine={false} axisLine={false} />
+                      <Tooltip />
+                      <Bar dataKey="total" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{space === "admin" ? "Invite verification funnel" : "Submission outcomes"}</CardTitle>
+                  <CardDescription>{space === "admin" ? "Approved students versus verified exam entrants." : "Passed and failed outcomes across submitted attempts."}</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Tooltip />
+                      <Pie data={space === "admin" ? adminInviteChart : examinerOutcomeChart} dataKey="total" nameKey={space === "admin" ? "label" : "outcome"} innerRadius={60} outerRadius={96} fill="hsl(var(--primary))" />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </div>

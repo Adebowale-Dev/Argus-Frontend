@@ -1,5 +1,5 @@
-import { QuestionBank } from "@/components/examiner/question-bank"
+import { QuestionBankOverview } from "@/components/examiner/question-bank"
 
 export default function QuestionBankPage() {
-  return <QuestionBank />
+  return <QuestionBankOverview />
 }

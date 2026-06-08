@@ -38,6 +38,18 @@ export type CreateUserInput = {
   role: Exclude<Role, "SUPER_ADMIN">
   permissions: string[]
 }
+export type ExamInvite = {
+  id?: string
+  _id?: string
+  email: string
+  fullName?: string
+  identifier?: string
+  metadata?: Record<string, string | number | boolean>
+  status: "APPROVED" | "VERIFIED" | "STARTED" | "COMPLETED" | "REVOKED"
+  verifiedAt?: string
+  createdAt?: string
+  lastUsedAt?: string
+}
 
 export type Paginated<T> = ApiEnvelope<T[]>
 export type UserStatus = "ACTIVE" | "BLOCKED" | "SUSPENDED" | "DELETED"
@@ -87,6 +99,7 @@ export type QuestionBank = {
   visibility: "PRIVATE" | "SHARED" | "ARCHIVED"
   status: ResourceStatus
   questionCount?: number
+  questions?: Question[]
   createdAt?: string
   updatedAt?: string
 }
@@ -100,7 +113,6 @@ export type Question = {
   options: QuestionOption[]
   correctAnswer?: string[]
   marks: number
-  difficulty: "EASY" | "MEDIUM" | "HARD"
   topic?: string
   tags?: string[]
   explanation?: string
@@ -158,6 +170,7 @@ export type Exam = {
   totalMarks?: number
   passMark?: number
   assignedCandidates?: User[]
+  invites?: ExamInvite[]
   status: ExamStatus
   showResultImmediately?: boolean
   randomizeQuestions?: boolean
@@ -190,6 +203,7 @@ export type Attempt = {
   exam: Exam | string
   candidate?: User
   candidateProfile?: { fullName: string; email?: string; phone?: string; identifier?: string; metadata?: Record<string, unknown> }
+  accessChannel?: "ACCOUNT" | "VERIFIED_OR_PUBLIC"
   status: AttemptStatus
   answers?: Array<{ question: string; answer: string[] }>
   expiresAt: string
@@ -233,6 +247,12 @@ export type AdminDashboard = {
     totalExams: number
     totalAttempts: number
     antiCheatEvents: number
+    totalInvites?: number
+    verifiedInvites?: number
+  }
+  charts?: {
+    examStatus?: Array<{ status: string; total: number }>
+    inviteFunnel?: Array<{ label: string; total: number }>
   }
   recentFlaggedAttempts: Array<{
     id: string
@@ -261,6 +281,10 @@ export type ExaminerDashboard = {
     publishedExams: number
     activeAttempts: number
     flaggedAttempts: number
+  }
+  charts?: {
+    invites?: Array<{ status: string; total: number }>
+    outcomes?: Array<{ outcome: string; total: number }>
   }
   recentExams: Array<{
     id: string

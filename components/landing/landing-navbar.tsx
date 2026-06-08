@@ -3,9 +3,10 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery } from "@tanstack/react-query"
+import { useSyncExternalStore } from "react"
 import { toast } from "sonner"
 
-import { currentUser, getSession, logout } from "@/lib/api/client"
+import { currentUser, getSession, logout, subscribeToSession } from "@/lib/api/client"
 import { ArgusMark } from "@/components/brand/argus-mark"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
@@ -13,7 +14,7 @@ import { homeForRole, roleLabel } from "@/lib/auth/routing"
 
 export function LandingNavbar() {
   const router = useRouter()
-  const hasSession = Boolean(getSession())
+  const hasSession = useSyncExternalStore(subscribeToSession, () => Boolean(getSession()), () => false)
   const { data: user } = useQuery({
     queryKey: ["auth", "me"],
     queryFn: currentUser,
@@ -61,7 +62,7 @@ export function LandingNavbar() {
                 <Link href="/login">Login</Link>
               </Button>
               <Button asChild>
-                <Link href="/register/examiner">Create examiner account</Link>
+                <Link href="/login">Examiner sign in</Link>
               </Button>
             </>
           )}

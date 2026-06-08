@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -9,7 +9,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { currentUser } from "@/lib/api/client"
+import { clearSession, currentUser, getSession, subscribeToSession } from "@/lib/api/client"
 import { homeForRole } from "@/lib/auth/routing"
 import type { Role } from "@/lib/api/types"
 
@@ -26,16 +26,31 @@ export function WorkspaceLayout({
 }) {
   const router = useRouter()
   const notified = useRef(false)
+  const hasSession = useSyncExternalStore(subscribeToSession, () => Boolean(getSession()), () => false)
   const { data: user, isPending, error } = useQuery({
     queryKey: ["auth", "me"],
     queryFn: currentUser,
     retry: false,
+    enabled: hasSession,
   })
 
   useEffect(() => {
-    if (error && !notified.current) {
-      notified.current = true
-      toast.error("Please sign in to continue.")
+    if (!hasSession) {
+      clearSession()
+      if (!notified.current) {
+        notified.current = true
+        toast.error("Please sign in to continue.")
+      }
+      router.replace("/login")
+      return
+    }
+
+    if (error) {
+      clearSession()
+      if (!notified.current) {
+        notified.current = true
+        toast.error("Please sign in to continue.")
+      }
       router.replace("/login")
     } else if (user?.mustChangePassword && !notified.current) {
       notified.current = true
@@ -44,9 +59,9 @@ export function WorkspaceLayout({
     } else if (user && !allowedRoles.includes(user.role)) {
       router.replace(homeForRole(user.role))
     }
-  }, [allowedRoles, error, router, user])
+  }, [allowedRoles, error, hasSession, router, user])
 
-  if (isPending || !user || user.mustChangePassword || !allowedRoles.includes(user.role)) {
+  if (!hasSession || isPending || !user || user.mustChangePassword || !allowedRoles.includes(user.role)) {
     return (
       <div className="flex min-h-svh bg-muted/30">
         <div className="hidden w-64 border-r bg-card p-5 md:block"><Skeleton className="h-10 w-36" /></div>

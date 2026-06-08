@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { IconClock, IconLock, IconShieldCheck } from "@tabler/icons-react"
 import { useMutation, useQuery } from "@tanstack/react-query"
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { apiRequest, ApiRequestError, setAttemptToken } from "@/lib/api/client"
 import type { AttemptSession } from "@/lib/api/types"
+import { toastInvalidField } from "@/lib/form-validation"
 
 type Landing = {
   code?: string
@@ -36,34 +38,64 @@ type Landing = {
     customFields?: Array<{ key: string; label: string; type: "text" | "email" | "tel" | "number"; placeholder?: string; required?: boolean }>
   }
   antiCheatSummary: { requiresFullscreen: boolean; detectsTabSwitching: boolean; blocksCopyPaste: boolean; webcamRequired: boolean; autoSubmitEnabled: boolean }
+  accessCodeRequired?: boolean
+  emailVerificationRequired?: boolean
 }
 type CustomField = NonNullable<Landing["candidateIdentityRequirements"]["customFields"]>[number]
+
+const optionalValue = (value: FormDataEntryValue | null) => {
+  const normalized = String(value ?? "").trim()
+  return normalized ? normalized : undefined
+}
 
 export function PublicExamEntry({ slug }: { slug: string }) {
   const router = useRouter()
   const blockedDevice = useExamDeviceBlocked()
+  const [verifiedEmail, setVerifiedEmail] = useState("")
+  const [emailVerificationToken, setEmailVerificationToken] = useState("")
   const landing = useQuery({ queryKey: ["public-exam", slug], queryFn: () => apiRequest<Landing>(`/public/exams/${slug}`, {}, { authenticated: false }).then((response) => response.data) })
-  const verify = useMutation({
-    mutationFn: (accessCode: string) => apiRequest<{ examAccessToken: string; expiresIn: string }>(`/public/exams/${slug}/verify-code`, { method: "POST", body: JSON.stringify({ accessCode }) }, { authenticated: false }).then((response) => response.data),
+  const requestEmailOtp = useMutation({
+    mutationFn: (email: string) => apiRequest<{ email: string; expiresIn: string; devVerificationCode?: string }>(`/public/exams/${slug}/request-email-otp`, { method: "POST", body: JSON.stringify({ email }) }, { authenticated: false }).then((response) => response.data),
+    onSuccess: (data) => {
+      setVerifiedEmail(data.email)
+      toast.success(data.devVerificationCode ? "Verification code generated for local development." : "Verification code sent to your email.")
+    },
+    onError: (error: ApiRequestError) => toast.error(error.message),
+  })
+  const verifyEmailOtp = useMutation({
+    mutationFn: ({ email, otp }: { email: string; otp: string }) => apiRequest<{ emailVerificationToken: string; email: string }>(`/public/exams/${slug}/verify-email-otp`, { method: "POST", body: JSON.stringify({ email, otp }) }, { authenticated: false }).then((response) => response.data),
+    onSuccess: (data) => {
+      setVerifiedEmail(data.email)
+      setEmailVerificationToken(data.emailVerificationToken)
+      toast.success("Email verified. Complete your details to begin.")
+    },
     onError: (error: ApiRequestError) => toast.error(error.message),
   })
   const start = useMutation({
-    mutationFn: (form: FormData) => apiRequest<AttemptSession>(`/public/exams/${slug}/start`, {
-      method: "POST",
-      body: JSON.stringify({
-        examAccessToken: verify.data?.examAccessToken,
-        candidate: {
-          fullName: String(form.get("fullName") ?? ""),
-          email: String(form.get("email") ?? ""),
-          phone: String(form.get("phone") ?? ""),
-          identifier: String(form.get("identifier") ?? ""),
-          metadata: Object.fromEntries((exam.candidateIdentityRequirements.customFields ?? []).map((field: CustomField) => [field.key, String(form.get(`custom:${field.key}`) ?? "")])),
-        },
-        acceptedTerms: form.get("acceptedTerms") === "on",
-        deviceInfo: { userAgent: navigator.userAgent },
-        browserFingerprint: `${navigator.userAgent}-${screen.width}x${screen.height}`,
-      }),
-    }, { authenticated: false }).then((response) => response.data),
+    mutationFn: (form: FormData) => {
+      const metadata = Object.fromEntries(
+        (exam.candidateIdentityRequirements.customFields ?? [])
+          .map((field: CustomField) => [field.key, optionalValue(form.get(`custom:${field.key}`))])
+          .filter(([, value]) => value !== undefined),
+      )
+
+      return apiRequest<AttemptSession>(`/public/exams/${slug}/start`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...(emailVerificationToken ? { emailVerificationToken } : {}),
+          candidate: {
+            ...(optionalValue(form.get("fullName")) ? { fullName: optionalValue(form.get("fullName")) } : {}),
+            ...((verifiedEmail || optionalValue(form.get("email"))) ? { email: (verifiedEmail || optionalValue(form.get("email")) || "").trim() } : {}),
+            ...(optionalValue(form.get("phone")) ? { phone: optionalValue(form.get("phone")) } : {}),
+            ...(optionalValue(form.get("identifier")) ? { identifier: optionalValue(form.get("identifier")) } : {}),
+            ...(Object.keys(metadata).length ? { metadata } : {}),
+          },
+          acceptedTerms: form.get("acceptedTerms") === "on",
+          deviceInfo: { userAgent: navigator.userAgent },
+          browserFingerprint: `${navigator.userAgent}-${screen.width}x${screen.height}`,
+        }),
+      }, { authenticated: false }).then((response) => response.data)
+    },
     onSuccess: (session) => {
       const id = session.attempt.id ?? session.attempt._id
       if (id && session.attemptToken) setAttemptToken(id, session.attemptToken)
@@ -79,6 +111,8 @@ export function PublicExamEntry({ slug }: { slug: string }) {
 
   const exam = landing.data
   const requirements = exam.candidateIdentityRequirements
+  const verificationStep = !exam.emailVerificationRequired ? "details" : emailVerificationToken ? "details" : verifiedEmail ? "otp" : "request"
+  const verificationComplete = verificationStep === "details"
 
   return (
     <main className="min-h-svh bg-muted/40 px-4 py-10">
@@ -108,39 +142,75 @@ export function PublicExamEntry({ slug }: { slug: string }) {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Enter Exam</CardTitle><CardDescription>Step 1: verify the 6-digit code. Step 2: provide the details your lecturer requested. Step 3: launch the secure session.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Enter Exam</CardTitle><CardDescription>{exam.emailVerificationRequired ? "Step 1: verify your approved email. Step 2: provide the lecturer-required details. Step 3: launch the secure session." : "Complete the lecturer-required details below to begin your exam."}</CardDescription></CardHeader>
           <CardContent>
-            {!verify.data ? (
-              <form onSubmit={(event) => { event.preventDefault(); verify.mutate(String(new FormData(event.currentTarget).get("accessCode") ?? "")) }}>
-                <FieldGroup>
-                  <Field><FieldLabel>6-digit access code</FieldLabel><Input name="accessCode" inputMode="numeric" maxLength={6} required /></Field>
-                  <Button disabled={verify.isPending || !exam.canStart}>
-                    {verify.isPending ? "Verifying..." : "Verify code"}
-                    <ArrowRight className="size-4" />
-                  </Button>
-                </FieldGroup>
-              </form>
+            {!exam.canStart ? (
+              <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                You can complete verification now, but the secure session will only start once this exam becomes available.
+              </div>
+            ) : null}
+            {!verificationComplete && exam.emailVerificationRequired ? (
+              verificationStep === "request" ? (
+                <form onInvalidCapture={toastInvalidField} onSubmit={(event) => { event.preventDefault(); requestEmailOtp.mutate(String(new FormData(event.currentTarget).get("email") ?? "")) }}>
+                  <FieldGroup>
+                    <Field><FieldLabel>Approved student email</FieldLabel><Input name="email" type="email" required data-label="Approved student email" /></Field>
+                    <Button type="submit" disabled={requestEmailOtp.isPending}>
+                      {requestEmailOtp.isPending ? "Sending code..." : "Send verification code"}
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  </FieldGroup>
+                </form>
+              ) : (
+                <form onInvalidCapture={toastInvalidField} onSubmit={(event) => { event.preventDefault(); verifyEmailOtp.mutate({ email: verifiedEmail, otp: String(new FormData(event.currentTarget).get("otp") ?? "") }) }}>
+                  <FieldGroup>
+                    <div className="rounded-2xl border bg-muted/25 p-4 text-sm text-muted-foreground">We sent a 6-digit code to <span className="font-medium text-foreground">{verifiedEmail}</span>.</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setVerifiedEmail("")
+                        setEmailVerificationToken("")
+                        requestEmailOtp.reset()
+                        verifyEmailOtp.reset()
+                      }}
+                      className="w-fit text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Use a different email
+                    </button>
+                    {requestEmailOtp.data?.devVerificationCode ? (
+                      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                        Email sending is disabled in local development. Use this verification code: <span className="font-mono font-semibold">{requestEmailOtp.data.devVerificationCode}</span>
+                      </div>
+                    ) : null}
+                    <Field><FieldLabel>Email verification code</FieldLabel><Input name="otp" inputMode="numeric" maxLength={6} required data-label="Email verification code" /></Field>
+                    <Button type="submit" disabled={verifyEmailOtp.isPending}>
+                      {verifyEmailOtp.isPending ? "Verifying..." : "Verify email"}
+                      <ArrowRight className="size-4" />
+                    </Button>
+                  </FieldGroup>
+                </form>
+              )
             ) : (
-              <form onSubmit={(event) => { event.preventDefault(); start.mutate(new FormData(event.currentTarget)) }}>
+              <form onInvalidCapture={toastInvalidField} onSubmit={(event) => { event.preventDefault(); start.mutate(new FormData(event.currentTarget)) }}>
                 <FieldGroup>
                   <div className="rounded-2xl border bg-muted/25 p-4 text-sm text-muted-foreground">
                     These details are required so your submission can be matched correctly in the examiner&apos;s report and anti-cheat timeline.
                   </div>
-                  {requirements.fullName && <Field><FieldLabel>Full name</FieldLabel><Input name="fullName" required /></Field>}
-                  {requirements.email && <Field><FieldLabel>Email address</FieldLabel><Input name="email" type="email" required /></Field>}
-                  {requirements.phone && <Field><FieldLabel>Phone number</FieldLabel><Input name="phone" required /></Field>}
-                  {requirements.identifier && <Field><FieldLabel>ID / applicant number</FieldLabel><Input name="identifier" required /></Field>}
+                  {verifiedEmail ? <div className="rounded-2xl border bg-primary/5 p-4 text-sm text-primary">Verified email: {verifiedEmail}</div> : null}
+                  {requirements.fullName && <Field><FieldLabel>Full name</FieldLabel><Input name="fullName" required data-label="Full name" /></Field>}
+                  {requirements.email && !verifiedEmail && <Field><FieldLabel>Email address</FieldLabel><Input name="email" type="email" required data-label="Email address" /></Field>}
+                  {requirements.phone && <Field><FieldLabel>Phone number</FieldLabel><Input name="phone" required data-label="Phone number" /></Field>}
+                  {requirements.identifier && <Field><FieldLabel>ID / applicant number</FieldLabel><Input name="identifier" required data-label="ID / applicant number" /></Field>}
                   {requirements.customFields?.length ? (
                     <div className="space-y-4 rounded-2xl border p-4">
                       <div>
                         <p className="font-medium">Additional lecturer-requested details</p>
                         <p className="text-sm text-muted-foreground">Complete every field marked as required before the secure session can begin.</p>
                       </div>
-                      {requirements.customFields.map((field: CustomField) => <Field key={field.key}><FieldLabel>{field.label}</FieldLabel><Input name={`custom:${field.key}`} type={field.type} placeholder={field.placeholder} required={field.required} /></Field>)}
+                      {requirements.customFields.map((field: CustomField) => <Field key={field.key}><FieldLabel>{field.label}</FieldLabel><Input name={`custom:${field.key}`} type={field.type} placeholder={field.placeholder} required={field.required} data-label={field.label} /></Field>)}
                     </div>
                   ) : null}
                   <label className="flex items-start gap-2 rounded-md border p-3 text-sm"><input name="acceptedTerms" type="checkbox" required className="mt-1" /> I accept the exam rules and anti-cheat monitoring policy.</label>
-                  <Button disabled={start.isPending}>
+                  <Button type="submit" disabled={start.isPending || !exam.canStart}>
                     {start.isPending ? "Starting..." : "Start secure exam"}
                     <ArrowRight className="size-4" />
                   </Button>

@@ -6,6 +6,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api/v1"
 export const serverUrl = apiUrl.replace(/\/api\/v1\/?$/, "")
 const sessionKey = "argus_session"
 const attemptTokenPrefix = "argus_attempt_token:"
+const sessionEvent = "argus:session-changed"
 
 export class ApiRequestError extends Error {
   constructor(
@@ -31,10 +32,12 @@ export function getSession(): Session | null {
 
 export function setSession(session: Session) {
   window.localStorage.setItem(sessionKey, JSON.stringify(session))
+  window.dispatchEvent(new Event(sessionEvent))
 }
 
 export function clearSession() {
   window.localStorage.removeItem(sessionKey)
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(sessionEvent))
 }
 export function setAttemptToken(attemptId: string, token: string) {
   window.localStorage.setItem(`${attemptTokenPrefix}${attemptId}`, token)
@@ -61,6 +64,19 @@ async function refreshSession() {
   const envelope = await readResponse<Session>(response)
   setSession(envelope.data)
   return envelope.data.accessToken
+}
+
+export function subscribeToSession(listener: () => void) {
+  if (typeof window === "undefined") return () => undefined
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === sessionKey) listener()
+  }
+  window.addEventListener(sessionEvent, listener)
+  window.addEventListener("storage", handleStorage)
+  return () => {
+    window.removeEventListener(sessionEvent, listener)
+    window.removeEventListener("storage", handleStorage)
+  }
 }
 
 export async function apiRequest<T>(
@@ -125,10 +141,11 @@ export async function registerExaminer(input: RegisterExaminerInput) {
 }
 
 export async function logout() {
+  clearSession()
   try {
-    await apiRequest("/auth/logout", { method: "POST" })
-  } finally {
-    clearSession()
+    await apiRequest("/auth/logout", { method: "POST" }, { retry: false })
+  } catch {
+    return
   }
 }
 

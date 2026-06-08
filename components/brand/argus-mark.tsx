@@ -1,13 +1,11 @@
-import { ShieldCheckIcon } from "lucide-react"
+import Image from "next/image"
 
 import { cn } from "@/lib/utils"
 
 export function ArgusMark({ compact = false, className }: { compact?: boolean; className?: string }) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-        <ShieldCheckIcon className="size-5" />
-      </span>
+        <Image src="/logo.svg" alt="ARGUS" width={40} height={40} priority={false} />
       {!compact && (
         <span>
           <span className="block text-lg font-bold tracking-tight">ARGUS</span>
