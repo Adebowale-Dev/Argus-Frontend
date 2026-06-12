@@ -2,7 +2,7 @@
 
 import type { ApiEnvelope, AuthUser, LoginInput, RegisterExaminerInput, Session } from "@/lib/api/types"
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || ""
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "https://argus-backend-y7rd.onrender.com/api/v1"
 export const serverUrl = apiUrl.replace(/\/api\/v1\/?$/, "")
 const sessionKey = "argus_session"
 const attemptTokenPrefix = "argus_attempt_token:"
