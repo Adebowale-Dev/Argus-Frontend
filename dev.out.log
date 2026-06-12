@@ -1,0 +1,16 @@
+
+> argus-frontend@0.1.0 dev
+> next dev --webpack
+
+▲ Next.js 16.2.6 (webpack)
+- Local:         http://localhost:3000
+- Network:       http://172.20.10.3:3000
+- Environments: .env.local
+✓ Ready in 1294ms
+[32m✔[0m [33mConsole Ninja[0m extension is connected to [33mNext.js[0m, see [36mhttps://tinyurl.com/2vt8jxzw[0m
+
+○ Compiling /login ...
+ GET / 200 in 9.8s (next.js: 9.0s, application-code: 784ms)
+ GET /login 200 in 20.2s (next.js: 19.4s, application-code: 807ms)
+ GET / 200 in 144ms (next.js: 11ms, application-code: 133ms)
+[?25h

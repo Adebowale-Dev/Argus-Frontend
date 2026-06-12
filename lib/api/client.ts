@@ -141,11 +141,12 @@ export async function registerExaminer(input: RegisterExaminerInput) {
 }
 
 export async function logout() {
-  clearSession()
   try {
     await apiRequest("/auth/logout", { method: "POST" }, { retry: false })
   } catch {
     return
+  } finally {
+    clearSession()
   }
 }
 

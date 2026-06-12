@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import {
@@ -59,7 +59,7 @@ const documents = {
     { name: "Exam Reports", url: "/admin/reports", icon: IconReportAnalytics },
   ],
   EXAMINER: [
-    { name: "Assessment Reports", url: "/examiner/exams", icon: IconReportAnalytics },
+    { name: "Assessment Reports", url: "/examiner/reports", icon: IconReportAnalytics },
   ],
   CANDIDATE: [
     { name: "Exam Schedule", url: "/candidate/exams", icon: IconFileDescription },
@@ -108,3 +108,4 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
     </Sidebar>
   )
 }
+

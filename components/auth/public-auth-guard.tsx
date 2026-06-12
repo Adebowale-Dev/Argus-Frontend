@@ -21,7 +21,7 @@ export function PublicAuthGuard({ children }: { children: React.ReactNode }) {
   })
 
   useEffect(() => {
-    if (!user || redirected.current) return
+    if (!hasSession || !user || redirected.current) return
     if (user.mustChangePassword && pathname !== "/change-password") {
       redirected.current = true
       router.replace("/change-password")
@@ -31,12 +31,12 @@ export function PublicAuthGuard({ children }: { children: React.ReactNode }) {
       redirected.current = true
       router.replace(homeForRole(user.role))
     }
-  }, [pathname, router, user])
+  }, [hasSession, pathname, router, user])
 
   if (hasSession && isLoading && pathname !== "/change-password") {
     return <div className="w-full rounded-2xl border bg-card/80 p-6 text-center text-sm text-muted-foreground shadow-sm">Checking your session…</div>
   }
 
-  if (user && pathname !== "/change-password") return null
+  if (hasSession && user && pathname !== "/change-password") return null
   return <>{children}</>
 }

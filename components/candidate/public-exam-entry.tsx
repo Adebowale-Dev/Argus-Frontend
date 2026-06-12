@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -100,7 +100,7 @@ export function PublicExamEntry({ slug }: { slug: string }) {
       const id = session.attempt.id ?? session.attempt._id
       if (id && session.attemptToken) setAttemptToken(id, session.attemptToken)
       toast.success("Secure exam attempt started.")
-      router.push(`/candidate/attempts/${id}`)
+      router.push(`/exam/${encodeURIComponent(exam.code ?? slug)}/attempt/${id}`)
     },
     onError: (error: ApiRequestError) => toast.error(error.message),
   })
@@ -228,3 +228,4 @@ export function PublicExamEntry({ slug }: { slug: string }) {
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return <div className="rounded-lg border bg-card p-3 text-sm">{<span className="mb-2 block size-5 text-muted-foreground">{icon}</span>}<div className="text-muted-foreground">{label}</div><div className="font-semibold">{value}</div></div>
 }
+

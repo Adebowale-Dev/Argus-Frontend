@@ -1,199 +1,69 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
-import { IconCalendarTime, IconChartBar, IconShieldCheck, IconUserPlus } from "@tabler/icons-react"
+import { IconArrowUpRight, IconBook, IconCalendarTime, IconChartBar, IconPlus, IconShieldCheck, IconUsers } from "@tabler/icons-react"
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts"
 
-import { SectionCards, type DashboardCard } from "@/components/section-cards"
+import { ArgusLineChart } from "@/components/dashboard/argus-line-chart"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { apiRequest } from "@/lib/api/client"
+import { apiRequest, currentUser } from "@/lib/api/client"
 import type { AdminDashboard, CandidateDashboard, ExaminerDashboard } from "@/lib/api/types"
 
-const formatDate = (value?: string) => (value ? new Date(value).toLocaleString() : "Schedule not set")
+const formatDate = (value?: string) => value ? new Date(value).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Schedule not set"
 
 export function DashboardHome({ space }: { space: "admin" | "examiner" | "candidate" }) {
-  const adminDashboard = useQuery({
-    queryKey: ["dashboard", "admin"],
-    queryFn: () => apiRequest<AdminDashboard>("/dashboard/admin").then((response) => response.data),
-    enabled: space === "admin",
-  })
-  const examinerDashboard = useQuery({
-    queryKey: ["dashboard", "examiner"],
-    queryFn: () => apiRequest<ExaminerDashboard>("/dashboard/examiner").then((response) => response.data),
-    enabled: space === "examiner",
-  })
-  const candidateDashboard = useQuery({
-    queryKey: ["dashboard", "candidate"],
-    queryFn: () => apiRequest<CandidateDashboard>("/dashboard/candidate").then((response) => response.data),
-    enabled: space === "candidate",
-  })
+  const user = useQuery({ queryKey: ["auth", "me"], queryFn: currentUser })
+  const admin = useQuery({ queryKey: ["dashboard", "admin"], queryFn: () => apiRequest<AdminDashboard>("/dashboard/admin").then((r) => r.data), enabled: space === "admin" })
+  const examiner = useQuery({ queryKey: ["dashboard", "examiner"], queryFn: () => apiRequest<ExaminerDashboard>("/dashboard/examiner").then((r) => r.data), enabled: space === "examiner" })
+  const candidate = useQuery({ queryKey: ["dashboard", "candidate"], queryFn: () => apiRequest<CandidateDashboard>("/dashboard/candidate").then((r) => r.data), enabled: space === "candidate" })
 
-  const cards: DashboardCard[] =
-    space === "candidate"
-      ? [
-          { label: "Available To Take", value: candidateDashboard.data?.summary.availableCount ?? "-", change: "Ready", headline: "Assigned exams ready now", detail: "Exams you can begin from your dashboard" },
-          { label: "In Progress", value: candidateDashboard.data?.summary.inProgressCount ?? "-", change: "Live", headline: "Timed session protection", detail: "Server-controlled exam sessions" },
-          { label: "Completed", value: candidateDashboard.data?.summary.completedCount ?? "-", change: "Tracked", headline: "Past attempts available", detail: "Submitted exam history and results" },
-          { label: "Assigned", value: candidateDashboard.data?.summary.assignedCount ?? "-", change: "Scheduled", headline: "Upcoming exam queue", detail: "Published exams assigned to your account" },
-        ]
-      : space === "admin"
-        ? [
-            { label: "Active Users", value: adminDashboard.data?.summary.activeUsers ?? "-", change: "Live", headline: "Accounts in good standing", detail: "Current platform user coverage" },
-            { label: "Exams", value: adminDashboard.data?.summary.totalExams ?? "-", change: "Moderated", headline: "Platform-wide exam oversight", detail: "Draft, published, and closed exams" },
-            { label: "Attempts", value: adminDashboard.data?.summary.totalAttempts ?? "-", change: "Tracked", headline: "Candidate sessions monitored", detail: "All secure attempt sessions" },
-            { label: "Anti-Cheat Events", value: adminDashboard.data?.summary.antiCheatEvents ?? "-", change: "Review", headline: "Integrity signal visibility", detail: "Recorded monitoring activity", trend: "down" },
-          ]
-        : [
-            { label: "Question Banks", value: examinerDashboard.data?.summary.questionBanks ?? "-", change: "Owned", headline: "Your content libraries", detail: "Reusable question bank assets" },
-            { label: "Exams", value: examinerDashboard.data?.summary.totalExams ?? "-", change: "Built", headline: "Exams under your workspace", detail: "Draft and published assessments" },
-            { label: "Published", value: examinerDashboard.data?.summary.publishedExams ?? "-", change: "Live", headline: "Public or scheduled delivery", detail: "Exams ready for candidate access" },
-            { label: "Flagged Attempts", value: examinerDashboard.data?.summary.flaggedAttempts ?? "-", change: "Watch", headline: "Integrity attention needed", detail: "Candidate sessions with violations", trend: "down" },
-          ]
+  const metrics = space === "admin" ? [
+    ["Active users", admin.data?.summary.activeUsers ?? "-", "Platform accounts in good standing", "users"],
+    ["Examinations", admin.data?.summary.totalExams ?? "-", "Across the entire platform", "exams"],
+    ["Attempt sessions", admin.data?.summary.totalAttempts ?? "-", "Secure sessions monitored", "attempts"],
+    ["Integrity events", admin.data?.summary.antiCheatEvents ?? "-", "Signals requiring oversight", "integrity"],
+  ] : space === "examiner" ? [
+    ["Question banks", examiner.data?.summary.questionBanks ?? "-", "Reusable content libraries", "banks"],
+    ["Your examinations", examiner.data?.summary.totalExams ?? "-", "Draft, scheduled, and closed", "exams"],
+    ["Published", examiner.data?.summary.publishedExams ?? "-", "Available to candidates", "published"],
+    ["Flagged attempts", examiner.data?.summary.flaggedAttempts ?? "-", "Integrity review required", "integrity"],
+  ] : [
+    ["Available now", candidate.data?.summary.availableCount ?? "-", "Ready for you to begin", "available"],
+    ["In progress", candidate.data?.summary.inProgressCount ?? "-", "Secure sessions underway", "progress"],
+    ["Completed", candidate.data?.summary.completedCount ?? "-", "Submitted examinations", "complete"],
+    ["Assigned", candidate.data?.summary.assignedCount ?? "-", "Your full exam schedule", "assigned"],
+  ]
+  const list = space === "admin" ? admin.data?.recentFlaggedAttempts ?? [] : space === "examiner" ? examiner.data?.recentExams ?? [] : candidate.data?.assignedExams ?? []
+  const barData = space === "admin" ? admin.data?.charts?.examStatus ?? [] : examiner.data?.charts?.invites ?? []
+  const pieData = space === "admin" ? admin.data?.charts?.inviteFunnel ?? [] : examiner.data?.charts?.outcomes ?? []
+  const primaryHref = space === "admin" ? "/admin/users/new" : space === "examiner" ? "/examiner/exams/create" : candidate.data?.nextExam ? `/candidate/exams/${candidate.data.nextExam.id}` : "/candidate/exams"
+  const primaryLabel = space === "admin" ? "Add account" : space === "examiner" ? "Create exam" : "View available exams"
 
-  const adminItems = adminDashboard.data?.recentFlaggedAttempts ?? []
-  const examinerItems = examinerDashboard.data?.recentExams ?? []
-  const candidateItems = candidateDashboard.data?.assignedExams ?? []
-  const adminExamStatusChart = adminDashboard.data?.charts?.examStatus ?? []
-  const adminInviteChart = adminDashboard.data?.charts?.inviteFunnel ?? []
-  const examinerInviteChart = examinerDashboard.data?.charts?.invites ?? []
-  const examinerOutcomeChart = examinerDashboard.data?.charts?.outcomes ?? []
-
-  return (
-    <div className="flex flex-1 flex-col">
-      <div className="@container/main flex flex-1 flex-col gap-2">
-        <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-          <SectionCards cards={cards} />
-          <div className="grid gap-4 px-4 lg:grid-cols-[1.35fr_.85fr] lg:px-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {space === "candidate"
-                    ? "Assigned examination queue"
-                    : space === "admin"
-                      ? "Recent flagged activity"
-                      : "Recent published work"}
-                </CardTitle>
-                <CardDescription>
-                  {space === "candidate"
-                    ? "Exams assigned to your account appear here automatically when your examiner adds you."
-                    : space === "admin"
-                      ? "Platform-level sessions and exams that may need moderation attention."
-                      : "The latest exams in your workspace and their current access state."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {space === "candidate" && candidateItems.length
-                  ? candidateItems.map((exam) => (
-                      <div key={exam.id} className="flex items-center justify-between rounded-xl border bg-muted/25 p-4">
-                        <div className="space-y-1">
-                          <p className="font-medium">{exam.title}</p>
-                          <p className="text-sm text-muted-foreground">{formatDate(exam.startTime)}</p>
-                          <p className="text-xs text-muted-foreground">{exam.code ?? "Code pending"} - {exam.durationMinutes} minutes</p>
-                        </div>
-                        <Badge variant="outline">{exam.status}</Badge>
-                      </div>
-                    ))
-                  : space === "admin" && adminItems.length
-                    ? adminItems.map((attempt) => (
-                        <div key={attempt.id} className="rounded-xl border bg-muted/25 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="space-y-1">
-                              <p className="font-medium">{attempt.examTitle ?? "Unknown exam"}</p>
-                              <p className="text-sm text-muted-foreground">{attempt.candidateName}{attempt.candidateEmail ? ` - ${attempt.candidateEmail}` : ""}</p>
-                            </div>
-                            <Badge variant="outline">{attempt.status}</Badge>
-                          </div>
-                          <p className="mt-2 text-xs text-muted-foreground">Violation score: {attempt.violationScore} - Updated {formatDate(attempt.updatedAt)}</p>
-                        </div>
-                      ))
-                    : space === "examiner" && examinerItems.length
-                      ? examinerItems.map((exam) => (
-                          <div key={exam.id} className="flex items-center justify-between rounded-xl border bg-muted/25 p-4">
-                            <div className="space-y-1">
-                              <p className="font-medium">{exam.title}</p>
-                              <p className="text-sm text-muted-foreground">{exam.code ?? "Code pending"} - {formatDate(exam.createdAt)}</p>
-                            </div>
-                            <Badge variant="outline">{exam.status}</Badge>
-                          </div>
-                        ))
-                      : (
-                        <div className="flex items-center gap-3 rounded-xl border border-dashed p-5 text-sm text-muted-foreground">
-                          <IconChartBar className="size-5" />
-                          {space === "candidate"
-                            ? "No exams are assigned to your account yet."
-                            : space === "admin"
-                              ? "No urgent moderation-ready alerts require action."
-                              : "No recent exams are available in your workspace yet."}
-                        </div>
-                      )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick actions</CardTitle>
-                <CardDescription>Continue your role-specific work.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                {space === "admin" && (
-                  <Button asChild className="justify-start">
-                    <Link href="/admin/users/new"><IconUserPlus /> Provision an account</Link>
-                  </Button>
-                )}
-                {space === "candidate" && candidateDashboard.data?.nextExam && (
-                  <Button asChild className="justify-start">
-                    <Link href={`/candidate/exams/${candidateDashboard.data.nextExam.id}`}><IconCalendarTime /> Start next available exam</Link>
-                  </Button>
-                )}
-                <Button asChild variant="outline" className="justify-start">
-                  <Link href={space === "admin" ? "/admin/exams" : space === "examiner" ? "/examiner/exams" : "/candidate/exams"}><IconCalendarTime /> Review scheduled exams</Link>
-                </Button>
-                <Button asChild variant="outline" className="justify-start">
-                  <Link href={space === "admin" ? "/admin/reports" : space === "examiner" ? "/examiner/exams" : candidateDashboard.data?.activeAttempt ? `/candidate/attempts/${candidateDashboard.data.activeAttempt.id}` : "/candidate/exams"}>
-                    <IconShieldCheck /> {space === "candidate" ? "Open secure attempt room" : "View integrity monitoring"}
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-          {space !== "candidate" && (
-            <div className="grid gap-4 px-4 lg:grid-cols-2 lg:px-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{space === "admin" ? "Exam status mix" : "Invite verification status"}</CardTitle>
-                  <CardDescription>{space === "admin" ? "Live platform distribution of exam lifecycle states." : "How your verified invite lists are progressing."}</CardDescription>
-                </CardHeader>
-                <CardContent className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={space === "admin" ? adminExamStatusChart : examinerInviteChart}>
-                      <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                      <XAxis dataKey={space === "admin" ? "status" : "status"} tickLine={false} axisLine={false} />
-                      <Tooltip />
-                      <Bar dataKey="total" fill="hsl(var(--primary))" radius={[8, 8, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{space === "admin" ? "Invite verification funnel" : "Submission outcomes"}</CardTitle>
-                  <CardDescription>{space === "admin" ? "Approved students versus verified exam entrants." : "Passed and failed outcomes across submitted attempts."}</CardDescription>
-                </CardHeader>
-                <CardContent className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Tooltip />
-                      <Pie data={space === "admin" ? adminInviteChart : examinerOutcomeChart} dataKey="total" nameKey={space === "admin" ? "label" : "outcome"} innerRadius={60} outerRadius={96} fill="hsl(var(--primary))" />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+  return <main className="min-h-full bg-muted/20 px-4 py-5 lg:px-6 lg:py-7">
+    <div className="mx-auto flex max-w-[1500px] flex-col gap-6">
+      <section className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm md:p-7">
+        <div className="absolute inset-y-0 right-0 hidden w-2/5 bg-[radial-gradient(circle_at_center,var(--color-primary),transparent_65%)] opacity-[.08] lg:block" />
+        <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div><Badge variant="outline" className="mb-3">{space === "admin" ? "Platform oversight" : space === "examiner" ? "Assessment workspace" : "Candidate workspace"}</Badge><h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Welcome back, {user.data?.fullName?.split(" ")[0] ?? "there"}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{space === "admin" ? "Monitor platform activity, moderate examinations, and keep ARGUS operating securely." : space === "examiner" ? "Build assessments, understand candidate performance, and respond to integrity signals." : "Review your schedule, continue active sessions, and prepare for your next secure assessment."}</p></div>
+          <div className="flex flex-wrap gap-2"><Button asChild><Link href={primaryHref}><IconPlus />{primaryLabel}</Link></Button><Button asChild variant="outline"><Link href={space === "admin" ? "/admin/reports" : space === "examiner" ? "/examiner/reports" : "/candidate/exams"}>Open reports <IconArrowUpRight /></Link></Button></div>
         </div>
-      </div>
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, value, note, key]) => <Card key={String(key)} className="overflow-hidden shadow-sm"><CardHeader className="pb-2"><CardDescription>{label}</CardDescription><CardTitle className="text-3xl tabular-nums">{value}</CardTitle></CardHeader><CardContent><p className="text-xs text-muted-foreground">{note}</p><div className="mt-4 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-2/3 rounded-full bg-primary" /></div></CardContent></Card>)}</section>
+
+      <section className="grid gap-5 xl:grid-cols-[1.3fr_.7fr]">
+        <Card className="shadow-sm"><CardHeader className="flex-row items-start justify-between"><div><CardTitle>{space === "candidate" ? "Your examination queue" : space === "admin" ? "Activity requiring attention" : "Recent assessment activity"}</CardTitle><CardDescription>Live, role-specific activity from your ARGUS workspace.</CardDescription></div><Button asChild size="sm" variant="ghost"><Link href={space === "admin" ? "/admin/exams" : space === "examiner" ? "/examiner/exams" : "/candidate/exams"}>View all <IconArrowUpRight /></Link></Button></CardHeader><CardContent className="space-y-2">{list.length ? list.slice(0, 6).map((item) => { const row = item as Record<string, unknown>; return <div key={String(row.id)} className="flex items-center justify-between gap-4 rounded-xl border bg-background p-3.5 transition-colors hover:bg-muted/30"><div className="min-w-0"><p className="truncate text-sm font-medium">{String(row.title ?? row.examTitle ?? row.candidateName ?? "Activity")}</p><p className="mt-1 truncate text-xs text-muted-foreground">{String(row.code ?? row.candidateEmail ?? "Updated activity")} · {formatDate(String(row.createdAt ?? row.startTime ?? row.updatedAt ?? ""))}</p></div><Badge variant="outline">{String(row.status ?? "Active").replaceAll("_", " ")}</Badge></div> }) : <div className="rounded-xl border border-dashed py-12 text-center text-sm text-muted-foreground">No recent activity is available yet.</div>}</CardContent></Card>
+        <Card className="shadow-sm"><CardHeader><CardTitle>Workspace shortcuts</CardTitle><CardDescription>Move quickly between your most important tasks.</CardDescription></CardHeader><CardContent className="grid gap-2">{space === "admin" ? <><Shortcut href="/admin/users" icon={<IconUsers />} label="Manage accounts" /><Shortcut href="/admin/exams" icon={<IconShieldCheck />} label="Moderate exams" /><Shortcut href="/admin/reports" icon={<IconChartBar />} label="Integrity reports" /></> : space === "examiner" ? <><Shortcut href="/examiner/questions" icon={<IconBook />} label="Question banks" /><Shortcut href="/examiner/exams" icon={<IconShieldCheck />} label="Manage examinations" /><Shortcut href="/examiner/reports" icon={<IconChartBar />} label="Assessment reports" /></> : <><Shortcut href="/candidate/exams" icon={<IconCalendarTime />} label="My examinations" /><Shortcut href="/candidate/dashboard" icon={<IconShieldCheck />} label="Secure session readiness" /></>}</CardContent></Card>
+      </section>
+
+      {space !== "candidate" && <section className="grid gap-5 xl:grid-cols-2"><ArgusLineChart title={space === "admin" ? "Exam lifecycle" : "Candidate invite progress"} description="Current distribution across your workspace" data={barData.map((item) => ({ label: item.status, value: item.total }))} valueLabel={space === "admin" ? "Exams" : "Invites"} footer={space === "admin" ? "Platform exam status distribution" : "Verified candidate access progression"} /><ArgusLineChart title={space === "admin" ? "Candidate access funnel" : "Assessment outcomes"} description="A compact view of completion and performance" data={pieData.map((item) => ({ label: ("label" in item ? item.label : item.outcome), value: item.total }))} valueLabel={space === "admin" ? "Candidates" : "Outcomes"} footer={space === "admin" ? "Approved and verified access activity" : "Passed and failed submission outcomes"} /></section>}
     </div>
-  )
+  </main>
 }
+
+function Shortcut({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) { return <Button asChild variant="outline" className="h-11 justify-between"><Link href={href}><span className="flex items-center gap-2">{icon}{label}</span><IconArrowUpRight /></Link></Button> }
+
+

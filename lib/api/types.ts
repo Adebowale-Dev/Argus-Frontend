@@ -1,4 +1,4 @@
-export type Role = "SUPER_ADMIN" | "SUB_ADMIN" | "EXAMINER" | "CANDIDATE"
+﻿export type Role = "SUPER_ADMIN" | "SUB_ADMIN" | "EXAMINER" | "CANDIDATE"
 
 export type AuthUser = {
   id: string
@@ -214,6 +214,8 @@ export type Attempt = {
   violationScore?: number
   warningCount?: number
   autoSubmitReason?: string
+  retakeGrantedAt?: string
+  retakeGrantReason?: string
 }
 
 export type AttemptSession = {
@@ -339,3 +341,5 @@ export type CandidateDashboard = {
     status: AttemptStatus
   }>
 }
+
+

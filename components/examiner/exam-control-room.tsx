@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import Link from "next/link"
 import { useParams } from "next/navigation"
@@ -46,14 +46,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ApiRequestError, apiRequest, downloadApiFile, getSession, serverUrl } from "@/lib/api/client"
 import type { AntiCheatLog, Attempt, Exam, ExamInvite, Question } from "@/lib/api/types"
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ResultRow = {
   candidate: string; email: string; score: number; totalMarks: number
   percentage: number; passed: boolean; status: string; submittedAt: string
 }
 
-// ─── Tab config ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type TabId = "overview" | "questions" | "candidates" | "attempts" | "results" | "anticheat" | "share" | "settings"
 
@@ -68,10 +68,10 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ReactNode }> = [
   { id: "settings",    label: "Settings",    icon: <IconSettings className="size-4" /> },
 ]
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Status helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function fmtDate(d?: string) {
-  if (!d) return "—"
+  if (!d) return "â€”"
   return new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
 }
 
@@ -102,7 +102,7 @@ const STATUS_COLORS: Record<string, string> = {
   ARCHIVED:   "bg-muted/60 text-muted-foreground border-border",
 }
 
-// ─── ExamControlRoom ──────────────────────────────────────────────────────────
+// â”€â”€â”€ ExamControlRoom â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function ExamControlRoom() {
   const { examId } = useParams<{ examId: string }>()
@@ -322,7 +322,7 @@ export function ExamControlRoom() {
                   statusMutation.mutate(s)
                 }}
               >
-                {statusMutation.isPending ? "Please wait…" : "Confirm"}
+                {statusMutation.isPending ? "Please waitâ€¦" : "Confirm"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -339,7 +339,7 @@ export function ExamControlRoom() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
               <AlertDialogAction variant="destructive" disabled={deleteMutation.isPending} onClick={(ev) => { ev.preventDefault(); deleteMutation.mutate() }}>
-                {deleteMutation.isPending ? "Deleting…" : "Delete exam"}
+                {deleteMutation.isPending ? "Deletingâ€¦" : "Delete exam"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -356,7 +356,7 @@ export function ExamControlRoom() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={regenMutation.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction disabled={regenMutation.isPending} onClick={(ev) => { ev.preventDefault(); regenMutation.mutate() }}>
-              {regenMutation.isPending ? "Regenerating…" : "Regenerate"}
+              {regenMutation.isPending ? "Regeneratingâ€¦" : "Regenerate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -368,7 +368,7 @@ export function ExamControlRoom() {
   )
 }
 
-// ─── Tab: Overview ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Overview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabOverview({ exam, attempts, inProgress, submitted, flagged, qCount }: {
   exam: Exam; attempts: Attempt[]; inProgress: number; submitted: number; flagged: number; qCount: number
@@ -390,8 +390,8 @@ function TabOverview({ exam, attempts, inProgress, submitted, flagged, qCount }:
         </div>
         <div className="divide-y">
           <InfoRow label="Duration" value={fmtDuration(exam.durationMinutes)} />
-          <InfoRow label="Access type" value={exam.accessType?.replace(/_/g, " ") ?? "—"} />
-          <InfoRow label="Availability" value={exam.availabilityMode?.replace(/_/g, " ") ?? "—"} />
+          <InfoRow label="Access type" value={exam.accessType?.replace(/_/g, " ") ?? "â€”"} />
+          <InfoRow label="Availability" value={exam.availabilityMode?.replace(/_/g, " ") ?? "â€”"} />
           {exam.startTime && <InfoRow label="Start time" value={fmtDate(exam.startTime)} />}
           {exam.endTime && <InfoRow label="End time" value={fmtDate(exam.endTime)} />}
           {exam.totalMarks != null && <InfoRow label="Total marks" value={String(exam.totalMarks)} />}
@@ -421,7 +421,7 @@ function TabOverview({ exam, attempts, inProgress, submitted, flagged, qCount }:
                 <TableRow key={entityId(a)}>
                   <TableCell className="font-medium">{a.candidateProfile?.fullName ?? a.candidate?.fullName ?? "Anonymous"}</TableCell>
                   <TableCell><AttemptStatusBadge status={a.status} /></TableCell>
-                  <TableCell>{a.score != null ? `${a.score} / ${a.totalMarks ?? "?"}` : "—"}</TableCell>
+                  <TableCell>{a.score != null ? `${a.score} / ${a.totalMarks ?? "?"}` : "â€”"}</TableCell>
                   <TableCell className="text-muted-foreground text-xs">{fmtDate(a.expiresAt)}</TableCell>
                 </TableRow>
               ))}
@@ -433,7 +433,7 @@ function TabOverview({ exam, attempts, inProgress, submitted, flagged, qCount }:
   )
 }
 
-// ─── Tab: Questions ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Questions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabQuestions({ exam }: { exam: Exam }) {
   const questions = (exam.questions ?? []) as Question[]
@@ -459,7 +459,7 @@ function TabQuestions({ exam }: { exam: Exam }) {
               <span className="font-mono text-xs text-muted-foreground mt-0.5">#{i + 1}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium leading-snug">{q.questionText}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{q.questionType?.replace(/_/g, " ")} · {q.marks} pt{q.marks === 1 ? "" : "s"}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{q.questionType?.replace(/_/g, " ")} Â· {q.marks} pt{q.marks === 1 ? "" : "s"}</p>
               </div>
             </div>
           </div>
@@ -469,7 +469,7 @@ function TabQuestions({ exam }: { exam: Exam }) {
   )
 }
 
-// ─── Tab: Candidates ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Candidates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabCandidates({ exam, invites, isLoading, examId }: {
   exam: Exam; invites: ExamInvite[]; isLoading: boolean; examId: string
@@ -501,7 +501,7 @@ function TabCandidates({ exam, invites, isLoading, examId }: {
     return (
       <div className="rounded-xl border bg-card p-6 text-center text-sm text-muted-foreground">
         <IconWorld className="mx-auto mb-2 size-8 opacity-30" />
-        This exam uses public access. Any candidate with the link and code can participate — no invite management needed.
+        This exam uses public access. Any candidate with the link and code can participate â€” no invite management needed.
       </div>
     )
   }
@@ -580,9 +580,15 @@ function TabCandidates({ exam, invites, isLoading, examId }: {
   )
 }
 
-// ─── Tab: Attempts ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Attempts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabAttempts({ attempts, isLoading, examId }: { attempts: Attempt[]; isLoading: boolean; examId: string }) {
+  const queryClient = useQueryClient()
+  const grantRetake = useMutation({
+    mutationFn: (attemptId: string) => apiRequest(`/attempts/${attemptId}/grant-retake`, { method: "POST", body: JSON.stringify({ reason: "Retake approved after examiner review." }) }),
+    onSuccess: () => { toast.success("Retake granted. The candidate may start a fresh attempt."); queryClient.invalidateQueries({ queryKey: ["exam", examId, "attempts"] }) },
+    onError: (error: ApiRequestError) => toast.error(error.message),
+  })
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
       <div className="border-b bg-muted/30 px-5 py-3.5 flex items-center justify-between">
@@ -609,7 +615,7 @@ function TabAttempts({ attempts, isLoading, examId }: { attempts: Attempt[]; isL
               <TableHead>Status</TableHead>
               <TableHead>Score</TableHead>
               <TableHead>Violation score</TableHead>
-              <TableHead>Expires</TableHead>
+              <TableHead>Expires</TableHead><TableHead>Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -617,9 +623,9 @@ function TabAttempts({ attempts, isLoading, examId }: { attempts: Attempt[]; isL
               <TableRow key={entityId(a)}>
                 <TableCell className="font-medium">{a.candidateProfile?.fullName ?? a.candidate?.fullName ?? "Anonymous"}<br /><span className="text-xs text-muted-foreground">{a.candidateProfile?.email ?? a.candidate?.email ?? ""}</span></TableCell>
                 <TableCell><AttemptStatusBadge status={a.status} /></TableCell>
-                <TableCell>{a.score != null ? `${a.score} / ${a.totalMarks ?? "?"}` : "—"}{a.percentage != null ? <span className="ml-1 text-xs text-muted-foreground">({a.percentage}%)</span> : null}</TableCell>
-                <TableCell>{a.violationScore != null ? <span className={a.violationScore > 50 ? "text-destructive font-medium" : ""}>{a.violationScore}</span> : "—"}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{fmtDate(a.expiresAt)}</TableCell>
+                <TableCell>{a.score != null ? `${a.score} / ${a.totalMarks ?? "?"}` : "â€”"}{a.percentage != null ? <span className="ml-1 text-xs text-muted-foreground">({a.percentage}%)</span> : null}</TableCell>
+                <TableCell>{a.violationScore != null ? <span className={a.violationScore > 50 ? "text-destructive font-medium" : ""}>{a.violationScore}</span> : "â€”"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{fmtDate(a.expiresAt)}</TableCell><TableCell>{a.status === "AUTO_SUBMITTED" ? <Button size="sm" variant="outline" disabled={Boolean(a.retakeGrantedAt) || grantRetake.isPending} onClick={() => grantRetake.mutate(entityId(a))}>{a.retakeGrantedAt ? "Retake granted" : "Grant retake"}</Button> : null}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -629,7 +635,7 @@ function TabAttempts({ attempts, isLoading, examId }: { attempts: Attempt[]; isL
   )
 }
 
-// ─── Tab: Results ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Results â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabResults({ results, isLoading, examId }: { results: ResultRow[]; isLoading: boolean; examId: string }) {
   return (
@@ -683,7 +689,7 @@ function TabResults({ results, isLoading, examId }: { results: ResultRow[]; isLo
   )
 }
 
-// ─── Tab: Anti-Cheat ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Anti-Cheat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabAntiCheat({ logs, isLoading }: { logs: AntiCheatLog[]; isLoading: boolean }) {
   return (
@@ -729,7 +735,7 @@ function TabAntiCheat({ logs, isLoading }: { logs: AntiCheatLog[]; isLoading: bo
   )
 }
 
-// ─── Tab: Share ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Share â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabShare({ exam, onRegen }: { exam: Exam; onRegen: () => void }) {
   async function copy(text: string, label: string) {
@@ -781,7 +787,7 @@ function TabShare({ exam, onRegen }: { exam: Exam; onRegen: () => void }) {
   )
 }
 
-// ─── Tab: Settings ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tab: Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TabSettings({ exam, examId, onArchived, onDeleted }: { exam: Exam; examId: string; onArchived: () => void; onDeleted: () => void }) {
   return (
@@ -791,7 +797,7 @@ function TabSettings({ exam, examId, onArchived, onDeleted }: { exam: Exam; exam
         <InfoRow label="Created" value={fmtDate(exam.createdAt)} />
         <InfoRow label="Updated" value={fmtDate(exam.updatedAt)} />
         <InfoRow label="Max attempts" value={String(exam.maxAttempts ?? 1)} />
-        <InfoRow label="Access type" value={exam.accessType?.replace(/_/g, " ") ?? "—"} />
+        <InfoRow label="Access type" value={exam.accessType?.replace(/_/g, " ") ?? "â€”"} />
       </div>
       <div className="rounded-xl border border-destructive/30 bg-card p-5">
         <p className="text-sm font-semibold text-destructive">Danger zone</p>
@@ -810,7 +816,7 @@ function TabSettings({ exam, examId, onArchived, onDeleted }: { exam: Exam; exam
   )
 }
 
-// ─── Share Modal ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Share Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ShareModal({ exam, onClose, onRegen }: { exam: Exam; onClose: () => void; onRegen: () => void }) {
   async function copy(text: string, label: string) {
@@ -858,7 +864,7 @@ function ShareModal({ exam, onClose, onRegen }: { exam: Exam; onClose: () => voi
   )
 }
 
-// ─── Small helpers ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function StatCard({ label, value, icon, accent }: { label: string; value: number; icon: React.ReactNode; accent?: "blue" | "emerald" | "red" }) {
   const accentClass = (accent ? {
@@ -917,3 +923,4 @@ function InviteStatusBadge({ status }: { status: string }) {
     </span>
   )
 }
+

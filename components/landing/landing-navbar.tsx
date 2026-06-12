@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSyncExternalStore } from "react"
 import { toast } from "sonner"
 
@@ -14,6 +14,7 @@ import { homeForRole, roleLabel } from "@/lib/auth/routing"
 
 export function LandingNavbar() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const hasSession = useSyncExternalStore(subscribeToSession, () => Boolean(getSession()), () => false)
   const { data: user } = useQuery({
     queryKey: ["auth", "me"],
@@ -24,6 +25,7 @@ export function LandingNavbar() {
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ["auth"] })
       toast.success("You have been signed out securely.")
       router.replace("/")
       router.refresh()
@@ -43,7 +45,7 @@ export function LandingNavbar() {
         </nav>
         <div className="flex items-center gap-2">
           <ThemeToggle />
-          {user ? (
+          {hasSession && user ? (
             <>
               <div className="hidden text-right sm:block">
                 <p className="text-sm font-medium">{user.fullName}</p>

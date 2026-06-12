@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { IconDotsVertical, IconLogout } from "@tabler/icons-react"
 import { toast } from "sonner"
 import {
@@ -36,13 +36,16 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ["auth"] })
       toast.success("You have been signed out securely.")
       router.replace("/login")
     },
     onError: () => {
+      queryClient.removeQueries({ queryKey: ["auth"] })
       router.replace("/login")
     },
   })
