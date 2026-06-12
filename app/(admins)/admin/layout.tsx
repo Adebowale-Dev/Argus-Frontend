@@ -5,7 +5,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <WorkspaceLayout
       allowedRoles={["SUPER_ADMIN", "SUB_ADMIN"]}
       title="Administration"
-      // description="Users, reports and examination integrity oversight"
+      description="Monitor platform activity, moderate examinations, and keep ARGUS operating securely."
     >
       {children}
     </WorkspaceLayout>
