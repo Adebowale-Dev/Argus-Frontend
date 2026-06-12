@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import Link from "next/link"
 import {
@@ -103,7 +103,7 @@ export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sideb
         />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={{ name: user.fullName, email: user.email, avatar: "" }} />
+        <NavUser user={{ name: user.fullName, email: user.email, avatar: "", role: user.role }} />
       </SidebarFooter>
     </Sidebar>
   )
