@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useCallback, useId, useMemo, useRef, useState } from "react"
 import {
   IconAlertTriangle,
@@ -52,7 +53,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { ApiRequestError, apiRequest, downloadApiFile } from "@/lib/api/client"
-import type { Question, QuestionBank as QuestionBankType } from "@/lib/api/types"
+import type { Exam, Question, QuestionBank as QuestionBankType } from "@/lib/api/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,16 @@ const TYPE_COLORS: Record<string, string> = {
 
 const OPTION_POOL = ["A", "B", "C", "D", "E", "F"]
 const nextKey = (used: string[]) => OPTION_POOL.find((k) => !used.includes(k)) ?? null
+const IMPORT_EXTENSIONS = [".csv", ".tsv", ".txt", ".xls", ".xlsx", ".docx", ".pdf"]
+const IMPORT_MIME_TYPES = new Set([
+  "text/csv",
+  "text/plain",
+  "text/tab-separated-values",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/pdf",
+])
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -99,11 +110,19 @@ function qbId(value: Question["questionBank"]) {
 
 function issueMessages(issue: Record<string, unknown>) {
   const list = Array.isArray(issue.issues) ? (issue.issues as Array<Record<string, unknown>>) : []
-  return list.map((e) => {
+  const messages = list.map((e) => {
     const path = Array.isArray(e.path) ? e.path.join(".") : "row"
     const msg = typeof e.message === "string" ? e.message : "Invalid value"
     return `${path}: ${msg}`
   }).filter(Boolean)
+  if (messages.length) return messages
+  if (typeof issue.message === "string") return [issue.message]
+  return ["This row could not be validated. Check question type, options, answer, and marks."]
+}
+
+function isSupportedImportFile(file: File) {
+  const name = file.name.toLowerCase()
+  return IMPORT_EXTENSIONS.some((extension) => name.endsWith(extension)) || IMPORT_MIME_TYPES.has(file.type)
 }
 
 function buildQuestionPayload(
@@ -143,14 +162,22 @@ function buildQuestionPayload(
 
 export function QuestionBankOverview() {
   const queryClient = useQueryClient()
+  const router = useRouter()
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "ARCHIVED">("ALL")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selectedBanks, setSelectedBanks] = useState<Set<string>>(new Set())
 
   const banks = useQuery({
     queryKey: ["question-banks"],
     queryFn: () => apiRequest<QuestionBankType[]>("/question-banks?limit=100").then((r) => r.data),
+  })
+
+  const exams = useQuery({
+    queryKey: ["exams", "question-bank-usage"],
+    queryFn: () => apiRequest<Exam[]>("/exams?limit=200").then((r) => r.data),
   })
 
   const createMutation = useMutation({
@@ -160,7 +187,19 @@ export function QuestionBankOverview() {
       toast.success("Question bank created.")
       setCreateOpen(false)
       queryClient.invalidateQueries({ queryKey: ["question-banks"] })
-      window.location.assign(`/examiner/questions/${entityId(res.data)}`)
+      router.push(`/examiner/questions/${entityId(res.data)}`)
+    },
+    onError: (e: ApiRequestError) => toast.error(e.message),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.all(ids.map((id) => apiRequest(`/question-banks/${id}/permanent`, { method: "DELETE" }))),
+    onSuccess: (_, ids) => {
+      toast.success(`${ids.length} question bank${ids.length === 1 ? "" : "s"} deleted.`)
+      setSelectedBanks(new Set())
+      setBulkMode(false)
+      queryClient.invalidateQueries({ queryKey: ["question-banks"] })
     },
     onError: (e: ApiRequestError) => toast.error(e.message),
   })
@@ -189,6 +228,41 @@ export function QuestionBankOverview() {
 
   const total = banks.data?.length ?? 0
   const totalQ = banks.data?.reduce((s, b) => s + (b.questionCount ?? 0), 0) ?? 0
+  const bankUsage = useMemo(() => {
+    const usage = new Map<string, string[]>()
+    for (const exam of exams.data ?? []) {
+      const id = qbId(exam.questionBank)
+      if (!id) continue
+      usage.set(id, [...(usage.get(id) ?? []), exam.title])
+    }
+    return usage
+  }, [exams.data])
+
+  function toggleBulkMode() {
+    setBulkMode((current) => {
+      if (current) setSelectedBanks(new Set())
+      return !current
+    })
+  }
+
+  function toggleBank(id: string) {
+    if (bankUsage.has(id)) {
+      toast.warning("This bank is still referenced by an exam.", {
+        description: "Unpublishing or archiving keeps exam data. Permanently delete the linked exam first.",
+      })
+      return
+    }
+    setSelectedBanks((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible() {
+    setSelectedBanks(new Set(filtered.map(entityId).filter((id) => !bankUsage.has(id))))
+  }
 
   return (
     <div className="flex min-h-full flex-col">
@@ -260,6 +334,19 @@ export function QuestionBankOverview() {
               <IconList className="size-4" />
             </button>
           </div>
+          {bulkMode && filtered.length > 0 && (
+            <button type="button" onClick={selectAllVisible} className="text-xs font-medium text-primary hover:underline">
+              Select all ({filtered.length})
+            </button>
+          )}
+          <Button
+            size="sm"
+            variant={bulkMode ? "default" : "outline"}
+            onClick={toggleBulkMode}
+            className={bulkMode ? "bg-destructive hover:bg-destructive/90" : ""}
+          >
+            {bulkMode ? <><IconX className="size-4" /> Cancel</> : <><IconTrash className="size-4" /> Select banks to delete</>}
+          </Button>
         </div>
       </div>
 
@@ -295,15 +382,75 @@ export function QuestionBankOverview() {
             </div>
           ) : viewMode === "grid" ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((bank) => <BankCard key={entityId(bank)} bank={bank} />)}
+              {filtered.map((bank) => (
+                <BankCard
+                  key={entityId(bank)}
+                  bank={bank}
+                  onOpen={(href) => router.push(href)}
+                  bulkMode={bulkMode}
+                  selected={selectedBanks.has(entityId(bank))}
+                  usedBy={bankUsage.get(entityId(bank)) ?? []}
+                  onToggle={() => toggleBank(entityId(bank))}
+                />
+              ))}
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map((bank) => <BankListRow key={entityId(bank)} bank={bank} />)}
+              {filtered.map((bank) => (
+                <BankListRow
+                  key={entityId(bank)}
+                  bank={bank}
+                  onOpen={(href) => router.push(href)}
+                  bulkMode={bulkMode}
+                  selected={selectedBanks.has(entityId(bank))}
+                  usedBy={bankUsage.get(entityId(bank)) ?? []}
+                  onToggle={() => toggleBank(entityId(bank))}
+                />
+              ))}
             </div>
           )}
         </div>
       </div>
+
+      {bulkMode && (
+        <div className="sticky bottom-0 z-20 border-t bg-background/95 px-6 py-4 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">{selectedBanks.size} bank{selectedBanks.size === 1 ? "" : "s"} selected</p>
+              <p className="text-xs text-muted-foreground">Click a bank to select or deselect it.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={toggleBulkMode}>Cancel</Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={selectedBanks.size === 0 || deleteMutation.isPending}>
+                    <IconTrash className="size-4" />
+                    Delete {selectedBanks.size} selected
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {selectedBanks.size} question bank{selectedBanks.size === 1 ? "" : "s"}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently deletes the selected banks and their questions. Banks used by an exam cannot be deleted.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      disabled={deleteMutation.isPending}
+                      onClick={(e) => { e.preventDefault(); deleteMutation.mutate(Array.from(selectedBanks)) }}
+                    >
+                      {deleteMutation.isPending ? "Deleting…" : "Delete permanently"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -338,16 +485,38 @@ export function QuestionBankOverview() {
   )
 }
 
-function BankCard({ bank }: { bank: QuestionBankType }) {
+function BankCard({ bank, bulkMode, selected, usedBy, onToggle, onOpen }: {
+  bank: QuestionBankType; bulkMode: boolean; selected: boolean; usedBy: string[]; onToggle: () => void; onOpen: (href: string) => void
+}) {
   const count = bank.questionCount ?? 0
+  const href = `/examiner/questions/${entityId(bank)}`
+  function activate() {
+    if (bulkMode) onToggle()
+    else onOpen(href)
+  }
   return (
-    <Link href={`/examiner/questions/${entityId(bank)}`} className="group flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-sm transition-all hover:border-primary/30 hover:shadow-md">
+    <div
+      role={bulkMode ? "checkbox" : "link"}
+      aria-checked={bulkMode ? selected : undefined}
+      tabIndex={0}
+      onClick={activate}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate() } }}
+      className={`group flex cursor-pointer flex-col gap-4 rounded-xl border bg-card p-5 shadow-sm transition-all hover:shadow-md ${
+        selected ? "border-destructive/60 bg-destructive/5 ring-1 ring-destructive/30" : "hover:border-primary/30"
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border bg-muted/40 transition-colors group-hover:border-primary/20 group-hover:bg-primary/10">
-          <IconBook className="size-5 text-muted-foreground transition-colors group-hover:text-primary" />
+          {bulkMode && selected ? <IconCheck className="size-5 text-destructive" /> : <IconBook className="size-5 text-muted-foreground transition-colors group-hover:text-primary" />}
         </div>
         <StatusBadge status={bank.status} />
       </div>
+      {usedBy.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+          <IconAlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span>Referenced by {usedBy.join(", ")}. Permanently delete those exams first.</span>
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <p className="font-semibold leading-snug transition-colors group-hover:text-primary">{bank.title}</p>
         {bank.description && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{bank.description}</p>}
@@ -369,18 +538,34 @@ function BankCard({ bank }: { bank: QuestionBankType }) {
         </div>
       )}
       <div className="flex items-center justify-end gap-1 text-xs font-medium text-primary opacity-0 transition-opacity group-hover:opacity-100">
-        Open bank <IconArrowRight className="size-3.5" />
+        {bulkMode ? (selected ? "Selected" : "Select bank") : <><span>Open bank</span><IconArrowRight className="size-3.5" /></>}
       </div>
-    </Link>
+    </div>
   )
 }
 
-function BankListRow({ bank }: { bank: QuestionBankType }) {
+function BankListRow({ bank, bulkMode, selected, usedBy, onToggle, onOpen }: {
+  bank: QuestionBankType; bulkMode: boolean; selected: boolean; usedBy: string[]; onToggle: () => void; onOpen: (href: string) => void
+}) {
   const count = bank.questionCount ?? 0
+  const href = `/examiner/questions/${entityId(bank)}`
+  function activate() {
+    if (bulkMode) onToggle()
+    else onOpen(href)
+  }
   return (
-    <Link href={`/examiner/questions/${entityId(bank)}`} className="group flex items-center gap-4 rounded-lg border bg-card px-5 py-4 shadow-sm transition-all hover:border-primary/30 hover:shadow-md">
+    <div
+      role={bulkMode ? "checkbox" : "link"}
+      aria-checked={bulkMode ? selected : undefined}
+      tabIndex={0}
+      onClick={activate}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate() } }}
+      className={`group flex cursor-pointer items-center gap-4 rounded-lg border bg-card px-5 py-4 shadow-sm transition-all hover:shadow-md ${
+        selected ? "border-destructive/60 bg-destructive/5 ring-1 ring-destructive/30" : "hover:border-primary/30"
+      }`}
+    >
       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40 group-hover:bg-primary/10">
-        <IconBook className="size-4 text-muted-foreground group-hover:text-primary" />
+        {bulkMode && selected ? <IconCheck className="size-4 text-destructive" /> : <IconBook className="size-4 text-muted-foreground group-hover:text-primary" />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -390,8 +575,17 @@ function BankListRow({ bank }: { bank: QuestionBankType }) {
         {bank.description && <p className="mt-0.5 truncate text-sm text-muted-foreground">{bank.description}</p>}
       </div>
       <div className="shrink-0 text-sm text-muted-foreground">{count} question{count === 1 ? "" : "s"}</div>
-      <IconArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-    </Link>
+      {usedBy.length > 0 && (
+        <span className="max-w-52 truncate text-xs font-medium text-amber-700 dark:text-amber-300" title={`Used by ${usedBy.join(", ")}`}>
+          Used by {usedBy.length} exam{usedBy.length === 1 ? "" : "s"}
+        </span>
+      )}
+      {bulkMode ? (
+        <span className="text-xs font-medium text-destructive">{selected ? "Selected" : "Select"}</span>
+      ) : (
+        <IconArrowRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      )}
+    </div>
   )
 }
 
@@ -472,7 +666,14 @@ export function QuestionBankWorkspace({ bankId }: { bankId: string }) {
       }).then((r) => r.data)
     },
     onSuccess: (rows, file) => { setCsvFile(file); setCsvPreview(rows); setCsvIssues([]); toast.success(`${rows.length} question${rows.length === 1 ? "" : "s"} ready to import.`) },
-    onError: (e: ApiRequestError) => { setCsvFile(null); setCsvPreview([]); setCsvIssues(e.details ?? []); toast.error(e.message) },
+    onError: (e: ApiRequestError) => {
+      setCsvFile(null)
+      setCsvPreview([])
+      setCsvIssues(e.details ?? [])
+      const first = e.details?.[0]
+      const description = first ? `Row ${String(first.row ?? 1)}: ${issueMessages(first)[0]}` : undefined
+      toast.error(e.message, { description })
+    },
   })
 
   const importMutation = useMutation({
@@ -481,7 +682,12 @@ export function QuestionBankWorkspace({ bankId }: { bankId: string }) {
       return apiRequest("/questions/bulk-import", { method: "POST", body: fd, headers: { "X-Question-Bank": bankId } })
     },
     onSuccess: () => { toast.success("Questions imported."); setCsvFile(null); setCsvPreview([]); setCsvIssues([]); setTopPanel("none"); invalidate() },
-    onError: (e: ApiRequestError) => { setCsvIssues(e.details ?? []); toast.error(e.message) },
+    onError: (e: ApiRequestError) => {
+      setCsvIssues(e.details ?? [])
+      const first = e.details?.[0]
+      const description = first ? `Row ${String(first.row ?? 1)}: ${issueMessages(first)[0]}` : undefined
+      toast.error(e.message, { description })
+    },
   })
 
   const cloneMutation = useMutation({
@@ -638,11 +844,11 @@ export function QuestionBankWorkspace({ bankId }: { bankId: string }) {
             <ActionCard
               active={topPanel === "csv"}
               icon={<IconUpload className="size-5" />}
-              title="Upload CSV"
-              description="Import many questions at once from a formatted CSV file."
+              title="Import file"
+              description="Import many questions at once from CSV, TSV, TXT, Excel, Word, or PDF files."
               action={
                 <Button size="sm" disabled={!selectedBank} variant={topPanel === "csv" ? "default" : "outline"} onClick={() => openTopPanel("csv")}>
-                  {topPanel === "csv" ? "Close" : "Upload CSV"}
+                  {topPanel === "csv" ? "Close" : "Import questions"}
                 </Button>
               }
             />
@@ -1240,8 +1446,8 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
     e.preventDefault()
     setIsDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file && (file.name.endsWith(".csv") || file.type === "text/csv")) onPreview(file)
-    else toast.error("Please drop a .csv file.")
+    if (file && isSupportedImportFile(file)) onPreview(file)
+    else toast.error("Please drop a CSV, TSV, TXT, XLS, XLSX, DOCX, or PDF file.")
   }
 
   return (
@@ -1249,9 +1455,9 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <CardTitle className="text-base">Import Questions via CSV</CardTitle>
+            <CardTitle className="text-base">Import Questions from a File</CardTitle>
             <CardDescription className="mt-1">
-              Upload a CSV file to import multiple questions at once. Download the template below to see the exact format required.
+              Upload CSV, TSV, TXT, XLS, XLSX, DOCX, or PDF files to import multiple questions at once. Download the template below to see the expected columns.
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => downloadApiFile("/questions/import-template", "argus-question-template.csv")}>
@@ -1265,7 +1471,7 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
         {/* Format reference table */}
         <div className="overflow-hidden rounded-lg border">
           <div className="border-b bg-muted/40 px-4 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expected CSV format</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Expected file columns</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -1332,9 +1538,9 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
             </div>
             <div>
               <p className="text-sm font-medium">{isPreviewing ? "Parsing file…" : "Drag & drop or click to upload"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Accepts .csv files only</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Accepts .csv, .tsv, .txt, .xls, .xlsx, .docx, and .pdf files</p>
             </div>
-            <input ref={inputRef} type="file" accept=".csv,text/csv" className="sr-only" disabled={isPreviewing}
+            <input ref={inputRef} type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.docx,.pdf,text/csv,text/plain,text/tab-separated-values,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" disabled={isPreviewing}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onPreview(f); e.target.value = "" }}
             />
           </div>
@@ -1378,6 +1584,9 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
             <p className="mb-2 flex items-center gap-1.5 font-medium text-destructive">
               <IconAlertTriangle className="size-4" />
               {csvIssues.length} row{csvIssues.length === 1 ? "" : "s"} with errors
+            </p>
+            <p className="mb-3 text-muted-foreground">
+              For spreadsheets, use columns like <code>questionType</code>, <code>questionText</code>, <code>optionA</code>, <code>optionB</code>, <code>correctAnswer</code>, and <code>marks</code>. For DOCX/PDF, use repeated blocks with <code>Question:</code>, <code>A)</code>, <code>B)</code>, <code>Answer:</code>, and <code>Marks:</code>.
             </p>
             <div className="space-y-2">
               {csvIssues.slice(0, 5).map((issue, i) => (

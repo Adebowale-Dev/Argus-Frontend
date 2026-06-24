@@ -80,6 +80,53 @@ const defaultForm: FormState = {
   antiCheat: defaultAntiCheat, publishImmediately: false,
 }
 
+const positiveAntiCheatFields: Array<keyof AntiCheatSettings> = [
+  "snapshotIntervalSeconds",
+  "screenshotIntervalSeconds",
+  "autoSubmitViolationScore",
+  "warningViolationScore",
+  "finalWarningViolationScore",
+  "maxAwaySeconds",
+]
+
+const nonNegativeAntiCheatFields: Array<keyof AntiCheatSettings> = [
+  "maxTabSwitches",
+  "maxFullscreenExits",
+  "maxWindowBlurEvents",
+  "maxRefreshAttempts",
+]
+
+function cleanAntiCheatSettings(settings: AntiCheatSettings) {
+  const cleaned: AntiCheatSettings = { ...settings }
+  for (const key of positiveAntiCheatFields) {
+    const value = cleaned[key]
+    if (value == null) continue
+    const numberValue = Number(value)
+    if (!Number.isFinite(numberValue) || numberValue <= 0) delete cleaned[key]
+    else cleaned[key] = numberValue as never
+  }
+  for (const key of nonNegativeAntiCheatFields) {
+    const value = cleaned[key]
+    if (value == null) continue
+    const numberValue = Number(value)
+    if (!Number.isFinite(numberValue) || numberValue < 0) delete cleaned[key]
+    else cleaned[key] = numberValue as never
+  }
+  return cleaned
+}
+
+function apiErrorDescription(error: ApiRequestError) {
+  const messages = error.details
+    .map((detail) => {
+      const field = typeof detail.field === "string" ? detail.field : ""
+      const message = typeof detail.message === "string" ? detail.message : ""
+      if (field && message) return `${field}: ${message}`
+      return message || field
+    })
+    .filter(Boolean)
+  return messages.length ? messages.join("\n") : undefined
+}
+
 // ─── Step config ──────────────────────────────────────────────────────────────
 
 type StepDef = { id: number; label: string; sublabel: string; icon: React.ReactNode }
@@ -117,7 +164,9 @@ export function ExamCreate() {
       toast.success(form.publishImmediately ? "Exam created and published." : "Exam created as draft.")
       router.push(`/examiner/exams/${entityId(res.data)}`)
     },
-    onError: (e: ApiRequestError) => toast.error(e.message),
+    onError: (e: ApiRequestError) => toast.error(e.message, {
+      description: apiErrorDescription(e),
+    }),
   })
 
   function buildPayload() {
@@ -127,7 +176,7 @@ export function ExamCreate() {
       instructions: form.instructions.trim() || undefined,
       durationMinutes: Number(form.durationMinutes),
       passMark: form.passMark ? Number(form.passMark) : undefined,
-      questionBank: form.questionBankId || undefined,
+      questionBank: form.questionBankId,
       questions: form.selectedQuestionIds,
       accessType: form.accessType,
       availabilityMode: form.availabilityMode,
@@ -144,7 +193,8 @@ export function ExamCreate() {
       randomizeOptions: form.randomizeOptions,
       showResultImmediately: form.showResultImmediately,
       maxAttempts: Number(form.maxAttempts) || 1,
-      antiCheatSettings: form.antiCheat,
+      maxAttemptsPerCandidate: Number(form.maxAttempts) || 1,
+      antiCheatSettings: cleanAntiCheatSettings(form.antiCheat),
     }
   }
 
@@ -152,6 +202,7 @@ export function ExamCreate() {
     if (!form.title.trim()) { toast.error("Exam title is required."); setStep(1); return }
     if (!form.instructions.trim()) { toast.error("Instructions are required."); setStep(1); return }
     if (form.publishImmediately && !form.passMark) { toast.error("Pass mark is required before publishing."); setStep(1); return }
+    if (!form.questionBankId) { toast.error("Select a question bank."); setStep(2); return }
     if (!form.selectedQuestionIds.length) { toast.error("Select at least one question."); setStep(2); return }
     if (form.candidateIdentityRequirements.customFields.some((f) => !f.key.trim() || !f.label.trim())) {
       toast.error("All custom fields need a label and key."); setStep(4); return
@@ -161,14 +212,14 @@ export function ExamCreate() {
 
   const canNext = useMemo(() => {
     if (step === 1) return form.title.trim().length > 0 && form.instructions.trim().length > 0 && Number(form.durationMinutes) > 0
-    if (step === 2) return form.selectedQuestionIds.length > 0
+    if (step === 2) return Boolean(form.questionBankId) && form.selectedQuestionIds.length > 0
     return true
   }, [step, form])
 
   const completedSteps = useMemo<Set<number>>(() => {
     const c = new Set<number>()
     if (form.title.trim() && form.instructions.trim() && Number(form.durationMinutes) > 0) c.add(1)
-    if (form.selectedQuestionIds.length > 0) c.add(2)
+    if (form.questionBankId && form.selectedQuestionIds.length > 0) c.add(2)
     if (form.accessType) c.add(3)
     c.add(4); c.add(5); c.add(6)
     return c
@@ -510,11 +561,12 @@ function StepQuestions({ form, patch }: { form: FormState; patch: (p: Partial<Fo
     queryKey: ["question-banks"],
     queryFn: () => apiRequest<QuestionBank[]>("/question-banks?limit=100").then((r) => r.data),
   })
+  const activeBanks = useMemo(() => (banks.data ?? []).filter((bank) => bank.status === "ACTIVE"), [banks.data])
 
   const bankId = form.questionBankId
   const bankQuestions = useQuery({
-    queryKey: ["question-bank", bankId, "questions"],
-    queryFn: () => apiRequest<Question[]>(`/question-banks/${bankId}/questions?limit=500`).then((r) => r.data),
+    queryKey: ["question-bank", bankId, "questions", "active"],
+    queryFn: () => apiRequest<Question[]>(`/question-banks/${bankId}/questions?limit=500&status=ACTIVE`).then((r) => r.data),
     enabled: Boolean(bankId),
   })
 
@@ -534,6 +586,7 @@ function StepQuestions({ form, patch }: { form: FormState; patch: (p: Partial<Fo
 
   function toggleAll() {
     const all = displayed.map(entityId)
+    if (!all.length) return
     const allSelected = all.every((id) => form.selectedQuestionIds.includes(id))
     if (allSelected) patch({ selectedQuestionIds: form.selectedQuestionIds.filter((id) => !all.includes(id)) })
     else patch({ selectedQuestionIds: Array.from(new Set([...form.selectedQuestionIds, ...all])) })
@@ -555,12 +608,15 @@ function StepQuestions({ form, patch }: { form: FormState; patch: (p: Partial<Fo
                   className="h-9 w-full appearance-none rounded-md border bg-background pl-3 pr-8 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/30"
                 >
                   <option value="">Select a question bank…</option>
-                  {banks.data?.map((b) => (
+                  {activeBanks.map((b) => (
                     <option key={entityId(b)} value={entityId(b)}>{b.title} ({b.questionCount ?? 0} questions)</option>
                   ))}
                 </select>
                 <IconChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               </div>
+            )}
+            {!banks.isPending && activeBanks.length === 0 && (
+              <p className="mt-2 text-xs text-destructive">Create an active question bank with questions before creating an exam.</p>
             )}
           </Field>
         </CardSection>
@@ -583,8 +639,8 @@ function StepQuestions({ form, patch }: { form: FormState; patch: (p: Partial<Fo
                     <strong className="text-foreground">{form.selectedQuestionIds.length}</strong> selected
                     {totalMarks > 0 && <span> · <strong className="text-foreground">{totalMarks}</strong> marks</span>}
                   </span>
-                  <button type="button" onClick={toggleAll} className="text-xs font-medium text-primary hover:underline">
-                    {displayed.every((q) => form.selectedQuestionIds.includes(entityId(q))) ? "Deselect all" : "Select all"}
+                  <button type="button" onClick={toggleAll} disabled={displayed.length === 0} className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:text-muted-foreground">
+                    {displayed.length > 0 && displayed.every((q) => form.selectedQuestionIds.includes(entityId(q))) ? "Deselect all" : "Select all"}
                   </button>
                 </div>
               </div>
@@ -984,6 +1040,7 @@ function StepReview({ form, patch, onSubmit, isPending }: {
   if (!form.title.trim()) issues.push("Exam title is required.")
   if (!form.instructions.trim()) issues.push("Instructions are required.")
   if (form.publishImmediately && !form.passMark) issues.push("Pass mark is required before publishing.")
+  if (!form.questionBankId) issues.push("Question bank is required.")
   if (!form.selectedQuestionIds.length) issues.push("No questions selected.")
   if (!Number(form.durationMinutes)) issues.push("Duration must be greater than 0.")
   if (form.availabilityMode === "SCHEDULED" && (!form.startTime || !form.endTime)) issues.push("Scheduled mode requires both start and end times.")

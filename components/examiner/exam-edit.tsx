@@ -461,8 +461,8 @@ function EditStepQuestions({ form, patch }: { form: FormState; patch: (p: Partia
 
   const bankId = form.questionBankId
   const bankQuestions = useQuery({
-    queryKey: ["question-bank", bankId, "questions"],
-    queryFn: () => apiRequest<Question[]>(`/question-banks/${bankId}/questions?limit=500`).then((r) => r.data),
+    queryKey: ["question-bank", bankId, "questions", "active"],
+    queryFn: () => apiRequest<Question[]>(`/question-banks/${bankId}/questions?limit=500&status=ACTIVE`).then((r) => r.data),
     enabled: Boolean(bankId),
   })
 

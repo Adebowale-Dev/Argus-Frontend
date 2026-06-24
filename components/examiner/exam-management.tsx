@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo, useRef, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   IconArchive,
   IconArrowLeft,
@@ -104,7 +104,7 @@ export function ExamManagement() {
       if (action === "unpublish") return apiRequest(`/exams/${id}/unpublish`, { method: "POST" })
       if (action === "close")     return apiRequest(`/exams/${id}/close`,     { method: "POST" })
       if (action === "archive")   return apiRequest(`/exams/${id}/archive`,   { method: "POST" })
-      if (action === "delete")    return apiRequest(`/exams/${id}`,           { method: "DELETE" })
+      if (action === "delete")    return apiRequest(`/exams/${id}/permanent`, { method: "DELETE" })
       throw new Error("Unknown action.")
     },
     onSuccess: (_, vars) => {
@@ -177,13 +177,13 @@ export function ExamManagement() {
               )}
             </div>
 
-            <Link href="/examiner/exams/create" className="shrink-0">
-              <Button size="sm" className="gap-1.5">
+            <Button asChild size="sm" className="shrink-0 gap-1.5">
+              <Link href="/examiner/exams/create">
                 <IconPlus className="size-4" />
                 <span className="hidden sm:inline">Create Exam</span>
                 <span className="sm:hidden">New</span>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
@@ -358,11 +358,11 @@ function EmptyState({ hasExams }: { hasExams: boolean }) {
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">
             Create your first exam to start assessing candidates with built-in anti-cheat monitoring.
           </p>
-          <Link href="/examiner/exams/create" className="mt-5">
-            <Button size="sm" className="gap-1.5">
+          <Button asChild size="sm" className="mt-5 gap-1.5">
+            <Link href="/examiner/exams/create">
               <IconPlus className="size-4" /> Create your first exam
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </>
       )}
     </div>
