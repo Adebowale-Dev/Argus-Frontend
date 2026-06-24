@@ -89,7 +89,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 const OPTION_POOL = ["A", "B", "C", "D", "E", "F"]
 const nextKey = (used: string[]) => OPTION_POOL.find((k) => !used.includes(k)) ?? null
-const IMPORT_EXTENSIONS = [".csv", ".tsv", ".txt", ".xls", ".xlsx", ".docx", ".pdf"]
+const IMPORT_EXTENSIONS = [".csv", ".tsv", ".txt", ".xls", ".xlsx", ".docx"]
 const IMPORT_MIME_TYPES = new Set([
   "text/csv",
   "text/plain",
@@ -97,7 +97,6 @@ const IMPORT_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/pdf",
 ])
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
@@ -1447,7 +1446,7 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
     setIsDragging(false)
     const file = e.dataTransfer.files[0]
     if (file && isSupportedImportFile(file)) onPreview(file)
-    else toast.error("Please drop a CSV, TSV, TXT, XLS, XLSX, DOCX, or PDF file.")
+    else toast.error("Please drop a CSV, TSV, TXT, XLS, XLSX, or DOCX file.")
   }
 
   return (
@@ -1457,12 +1456,12 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
           <div>
             <CardTitle className="text-base">Import Questions from a File</CardTitle>
             <CardDescription className="mt-1">
-              Upload CSV, TSV, TXT, XLS, XLSX, DOCX, or PDF files to import multiple questions at once. Download the template below to see the expected columns.
+              Upload CSV, TSV, TXT, XLS, XLSX, or DOCX files to import multiple questions at once. Download the Word template below to test the document format.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => downloadApiFile("/questions/import-template", "argus-question-template.csv")}>
+          <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => downloadApiFile("/questions/import-template", "argus-question-template.docx")}>
             <IconDownload className="size-4" />
-            Download template
+            Download Word template
           </Button>
         </div>
       </CardHeader>
@@ -1538,9 +1537,9 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
             </div>
             <div>
               <p className="text-sm font-medium">{isPreviewing ? "Parsing file…" : "Drag & drop or click to upload"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Accepts .csv, .tsv, .txt, .xls, .xlsx, .docx, and .pdf files</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Accepts .csv, .tsv, .txt, .xls, .xlsx, and .docx files</p>
             </div>
-            <input ref={inputRef} type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.docx,.pdf,text/csv,text/plain,text/tab-separated-values,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" disabled={isPreviewing}
+            <input ref={inputRef} type="file" accept=".csv,.tsv,.txt,.xls,.xlsx,.docx,text/csv,text/plain,text/tab-separated-values,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document" className="sr-only" disabled={isPreviewing}
               onChange={(e) => { const f = e.target.files?.[0]; if (f) onPreview(f); e.target.value = "" }}
             />
           </div>
@@ -1586,7 +1585,7 @@ function CsvPanel({ csvFile, csvPreview, csvIssues, isPreviewing, isImporting, o
               {csvIssues.length} row{csvIssues.length === 1 ? "" : "s"} with errors
             </p>
             <p className="mb-3 text-muted-foreground">
-              For spreadsheets, use columns like <code>questionType</code>, <code>questionText</code>, <code>optionA</code>, <code>optionB</code>, <code>correctAnswer</code>, and <code>marks</code>. For DOCX/PDF, use repeated blocks with <code>Question:</code>, <code>A)</code>, <code>B)</code>, <code>Answer:</code>, and <code>Marks:</code>.
+              For spreadsheets, use columns like <code>questionType</code>, <code>questionText</code>, <code>optionA</code>, <code>optionB</code>, <code>correctAnswer</code>, and <code>marks</code>. For DOCX, use repeated blocks with <code>Question:</code>, <code>A)</code>, <code>B)</code>, <code>Answer:</code>, and <code>Marks:</code>.
             </p>
             <div className="space-y-2">
               {csvIssues.slice(0, 5).map((issue, i) => (
